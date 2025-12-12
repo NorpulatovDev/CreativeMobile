@@ -18,4 +18,7 @@ class ApiConstants {
 
   // Payments
   static const String payments = '/api/payments';
+
+  // Enrollments
+  static const String enrollments = '/api/enrollments';
 }

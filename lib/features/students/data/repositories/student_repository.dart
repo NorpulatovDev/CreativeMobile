@@ -1,46 +1,49 @@
-import 'package:injectable/injectable.dart';
 import '../datasources/student_remote_datasource.dart';
-import '../models/models.dart';
+import '../models/student.dart';
+import '../models/student_group.dart';
 
-abstract class StudentRepository {
-  Future<List<Student>> getAll();
-  Future<List<Student>> getByGroupId(int groupId);
-  Future<Student> getById(int id);
-  Future<Student> create(StudentRequest request);
-  Future<Student> update(int id, StudentRequest request);
-  Future<Student> assignToGroup(int studentId, int groupId);
-  Future<Student> removeFromGroup(int studentId);
-}
+class StudentRepository {
+  final StudentRemoteDataSource dataSource;
 
-@LazySingleton(as: StudentRepository)
-class StudentRepositoryImpl implements StudentRepository {
-  final StudentRemoteDataSource _remoteDataSource;
+  StudentRepository(this.dataSource);
 
-  StudentRepositoryImpl(this._remoteDataSource);
+  Future<List<Student>> getAll() {
+    return dataSource.getAll();
+  }
 
-  @override
-  Future<List<Student>> getAll() => _remoteDataSource.getAll();
+  Future<Student> getById(int id) {
+    return dataSource.getById(id);
+  }
 
-  @override
-  Future<List<Student>> getByGroupId(int groupId) =>
-      _remoteDataSource.getByGroupId(groupId);
+  Future<List<Student>> getByGroupId(int groupId) {
+    return dataSource.getByGroupId(groupId);
+  }
 
-  @override
-  Future<Student> getById(int id) => _remoteDataSource.getById(id);
+  Future<Student> create(StudentRequest request) {
+    return dataSource.create(request);
+  }
 
-  @override
-  Future<Student> create(StudentRequest request) =>
-      _remoteDataSource.create(request);
+  Future<Student> update(int id, StudentRequest request) {
+    return dataSource.update(id, request);
+  }
 
-  @override
-  Future<Student> update(int id, StudentRequest request) =>
-      _remoteDataSource.update(id, request);
+  Future<StudentGroup> addToGroup(StudentGroupRequest request) {
+    return dataSource.addToGroup(request);
+  }
 
-  @override
-  Future<Student> assignToGroup(int studentId, int groupId) =>
-      _remoteDataSource.assignToGroup(studentId, groupId);
+  Future<void> removeFromGroup(int studentId, int groupId) {
+    return dataSource.removeFromGroup(studentId, groupId);
+  }
 
-  @override
-  Future<Student> removeFromGroup(int studentId) =>
-      _remoteDataSource.removeFromGroup(studentId);
+  Future<List<StudentGroup>> getStudentGroups(int studentId) {
+    return dataSource.getStudentGroups(studentId);
+  }
+
+  Future<List<StudentGroup>> getStudentActiveGroups(int studentId) {
+    return dataSource.getStudentActiveGroups(studentId);
+  }
+
+  Future<List<StudentGroup>> getGroupStudents(int groupId) {
+    return dataSource.getGroupStudents(groupId);
+  }
 }

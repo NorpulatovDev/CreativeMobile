@@ -28,7 +28,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
   List<Student> get _filteredStudents {
     if (_selectedGroupId == null) return widget.students;
     return widget.students
-        .where((s) => s.activeGroupId == _selectedGroupId)
+        .where((s) => s.activeGroups[0].groupId == _selectedGroupId)
         .toList();
   }
 

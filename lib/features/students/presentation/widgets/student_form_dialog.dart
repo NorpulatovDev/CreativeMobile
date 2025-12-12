@@ -1,16 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../data/models/models.dart';
-import '../../../groups/data/models/models.dart';
+import '../../data/models/student.dart';
 
 class StudentFormDialog extends StatefulWidget {
   final Student? student;
-  final List<Group> groups;
 
-  const StudentFormDialog({
-    super.key,
-    this.student,
-    required this.groups,
-  });
+  const StudentFormDialog({super.key, this.student});
 
   @override
   State<StudentFormDialog> createState() => _StudentFormDialogState();
@@ -18,60 +12,55 @@ class StudentFormDialog extends StatefulWidget {
 
 class _StudentFormDialogState extends State<StudentFormDialog> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _nameController;
-  late final TextEditingController _parentNameController;
-  late final TextEditingController _phoneController;
-  int? _selectedGroupId;
+  late TextEditingController _fullNameController;
+  late TextEditingController _parentNameController;
+  late TextEditingController _phoneController;
 
   bool get isEditing => widget.student != null;
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.student?.fullName);
-    _parentNameController = TextEditingController(text: widget.student?.parentName);
-    _phoneController = TextEditingController(text: widget.student?.parentPhoneNumber);
-    _selectedGroupId = widget.student?.activeGroupId;
+    _fullNameController = TextEditingController(
+      text: widget.student?.fullName ?? '',
+    );
+    _parentNameController = TextEditingController(
+      text: widget.student?.parentName ?? '',
+    );
+    _phoneController = TextEditingController(
+      text: widget.student?.parentPhoneNumber ?? '+998',
+    );
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _fullNameController.dispose();
     _parentNameController.dispose();
     _phoneController.dispose();
     super.dispose();
-  }
-
-  void _submit() {
-    if (_formKey.currentState!.validate()) {
-      Navigator.of(context).pop({
-        'fullName': _nameController.text.trim(),
-        'parentName': _parentNameController.text.trim(),
-        'parentPhoneNumber': _phoneController.text.trim(),
-        'activeGroupId': _selectedGroupId,
-      });
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(isEditing ? 'Edit Student' : 'Add Student'),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
-                controller: _nameController,
+                controller: _fullNameController,
                 decoration: const InputDecoration(
                   labelText: 'Full Name',
+                  prefixIcon: Icon(Icons.person),
                   border: OutlineInputBorder(),
                 ),
+                textCapitalization: TextCapitalization.words,
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter full name';
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Required';
                   }
                   return null;
                 },
@@ -81,11 +70,13 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
                 controller: _parentNameController,
                 decoration: const InputDecoration(
                   labelText: 'Parent Name',
+                  prefixIcon: Icon(Icons.family_restroom),
                   border: OutlineInputBorder(),
                 ),
+                textCapitalization: TextCapitalization.words,
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter parent name';
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Required';
                   }
                   return null;
                 },
@@ -94,44 +85,21 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
               TextFormField(
                 controller: _phoneController,
                 decoration: const InputDecoration(
-                  labelText: 'Parent Phone',
-                  hintText: '+998XXXXXXXXX',
+                  labelText: 'Phone Number',
+                  prefixIcon: Icon(Icons.phone),
                   border: OutlineInputBorder(),
+                  hintText: '+998XXXXXXXXX',
                 ),
                 keyboardType: TextInputType.phone,
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter phone number';
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Required';
                   }
-                  if (!RegExp(r'^\+998[0-9]{9}$').hasMatch(value)) {
+                  final regex = RegExp(r'^\+998[0-9]{9}$');
+                  if (!regex.hasMatch(value.trim())) {
                     return 'Format: +998XXXXXXXXX';
                   }
                   return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<int?>(
-                value: _selectedGroupId,
-                decoration: const InputDecoration(
-                  labelText: 'Group (Optional)',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem(
-                    value: null,
-                    child: Text('No Group'),
-                  ),
-                  ...widget.groups.map((group) {
-                    return DropdownMenuItem(
-                      value: group.id,
-                      child: Text(group.name),
-                    );
-                  }),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    _selectedGroupId = value;
-                  });
                 },
               ),
             ],
@@ -140,7 +108,7 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
         FilledButton(
@@ -149,5 +117,16 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
         ),
       ],
     );
+  }
+
+  void _submit() {
+    if (_formKey.currentState!.validate()) {
+      final request = StudentRequest(
+        fullName: _fullNameController.text.trim(),
+        parentName: _parentNameController.text.trim(),
+        parentPhoneNumber: _phoneController.text.trim(),
+      );
+      Navigator.pop(context, request);
+    }
   }
 }

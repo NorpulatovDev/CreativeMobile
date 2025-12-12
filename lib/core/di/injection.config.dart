@@ -9,7 +9,6 @@
 // coverage:ignore-file
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'package:creative/core/network/dio_client.dart' as _i137;
 import 'package:creative/core/router/app_router.dart' as _i959;
 import 'package:creative/core/router/router_module.dart' as _i127;
 import 'package:creative/core/storage/token_storage.dart' as _i812;
@@ -37,12 +36,8 @@ import 'package:creative/features/payments/data/repositories/payment_repository.
     as _i461;
 import 'package:creative/features/payments/presentation/bloc/payment_bloc.dart'
     as _i429;
-import 'package:creative/features/students/data/datasources/student_remote_datasource.dart'
-    as _i451;
 import 'package:creative/features/students/data/repositories/student_repository.dart'
     as _i553;
-import 'package:creative/features/students/presentation/bloc/student_bloc.dart'
-    as _i680;
 import 'package:creative/features/teachers/data/datasources/teacher_remote_datasource.dart'
     as _i959;
 import 'package:creative/features/teachers/data/repositories/teacher_repository.dart'
@@ -62,32 +57,10 @@ extension GetItInjectableX on _i174.GetIt {
   }) async {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
     final storageModule = _$StorageModule();
-    final networkModule = _$NetworkModule();
     final routerModule = _$RouterModule();
     await gh.factoryAsync<_i460.SharedPreferences>(
       () => storageModule.prefs,
       preResolve: true,
-    );
-    gh.lazySingleton<_i812.TokenStorage>(
-      () => _i812.TokenStorage(gh<_i460.SharedPreferences>()),
-    );
-    gh.lazySingleton<_i361.Dio>(
-      () => networkModule.dio(gh<_i812.TokenStorage>()),
-    );
-    gh.lazySingleton<_i959.AppRouter>(
-      () => routerModule.appRouter(gh<_i812.TokenStorage>()),
-    );
-    gh.lazySingleton<_i451.StudentRemoteDataSource>(
-      () => _i451.StudentRemoteDataSourceImpl(gh<_i361.Dio>()),
-    );
-    gh.lazySingleton<_i959.TeacherRemoteDataSource>(
-      () => _i959.TeacherRemoteDataSourceImpl(gh<_i361.Dio>()),
-    );
-    gh.lazySingleton<_i553.StudentRepository>(
-      () => _i553.StudentRepositoryImpl(gh<_i451.StudentRemoteDataSource>()),
-    );
-    gh.lazySingleton<_i1031.TeacherRepository>(
-      () => _i1031.TeacherRepositoryImpl(gh<_i959.TeacherRemoteDataSource>()),
     );
     gh.lazySingleton<_i87.PaymentRemoteDataSource>(
       () => _i87.PaymentRemoteDataSourceImpl(gh<_i361.Dio>()),
@@ -95,21 +68,30 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i360.AuthRemoteDataSource>(
       () => _i360.AuthRemoteDataSourceImpl(gh<_i361.Dio>()),
     );
+    gh.lazySingleton<_i812.TokenStorage>(
+      () => _i812.TokenStorage(gh<_i460.SharedPreferences>()),
+    );
     gh.lazySingleton<_i93.AttendanceRemoteDataSource>(
       () => _i93.AttendanceRemoteDataSourceImpl(gh<_i361.Dio>()),
     );
     gh.lazySingleton<_i777.GroupRemoteDataSource>(
       () => _i777.GroupRemoteDataSourceImpl(gh<_i361.Dio>()),
     );
-    gh.factory<_i1050.TeacherBloc>(
-      () => _i1050.TeacherBloc(gh<_i1031.TeacherRepository>()),
+    gh.lazySingleton<_i959.AppRouter>(
+      () => routerModule.appRouter(gh<_i812.TokenStorage>()),
     );
     gh.lazySingleton<_i461.PaymentRepository>(
       () => _i461.PaymentRepositoryImpl(gh<_i87.PaymentRemoteDataSource>()),
     );
+    gh.lazySingleton<_i959.TeacherRemoteDataSource>(
+      () => _i959.TeacherRemoteDataSourceImpl(gh<_i361.Dio>()),
+    );
     gh.lazySingleton<_i711.AttendanceRepository>(
       () =>
           _i711.AttendanceRepositoryImpl(gh<_i93.AttendanceRemoteDataSource>()),
+    );
+    gh.lazySingleton<_i1031.TeacherRepository>(
+      () => _i1031.TeacherRepositoryImpl(gh<_i959.TeacherRemoteDataSource>()),
     );
     gh.lazySingleton<_i539.AuthRepository>(
       () => _i539.AuthRepositoryImpl(
@@ -123,11 +105,8 @@ extension GetItInjectableX on _i174.GetIt {
     gh.factory<_i103.AuthBloc>(
       () => _i103.AuthBloc(gh<_i539.AuthRepository>()),
     );
-    gh.factory<_i680.StudentBloc>(
-      () => _i680.StudentBloc(
-        gh<_i553.StudentRepository>(),
-        gh<_i912.GroupRepository>(),
-      ),
+    gh.factory<_i1050.TeacherBloc>(
+      () => _i1050.TeacherBloc(gh<_i1031.TeacherRepository>()),
     );
     gh.factory<_i734.GroupBloc>(
       () => _i734.GroupBloc(
@@ -154,7 +133,5 @@ extension GetItInjectableX on _i174.GetIt {
 }
 
 class _$StorageModule extends _i812.StorageModule {}
-
-class _$NetworkModule extends _i137.NetworkModule {}
 
 class _$RouterModule extends _i127.RouterModule {}

@@ -1,12 +1,17 @@
 import 'package:dio/dio.dart';
-import 'package:injectable/injectable.dart';
-import '../storage/token_storage.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api_constants.dart';
 
-@module
-abstract class NetworkModule {
-  @lazySingleton
-  Dio dio(TokenStorage tokenStorage) {
+class DioClient {
+  static Dio? _dio;
+  static const _storage = FlutterSecureStorage();
+
+  static Dio get instance {
+    _dio ??= _createDio();
+    return _dio!;
+  }
+
+  static Dio _createDio() {
     final dio = Dio(
       BaseOptions(
         baseUrl: ApiConstants.baseUrl,
@@ -16,35 +21,33 @@ abstract class NetworkModule {
       ),
     );
 
-    dio.interceptors.add(AuthInterceptor(tokenStorage));
-    dio.interceptors.add(LogInterceptor(
-      requestBody: true,
-      responseBody: true,
-    ));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          final token = await _storage.read(key: 'access_token');
+          if (token != null) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
+          handler.next(options);
+        },
+        onError: (error, handler) {
+          handler.next(error);
+        },
+      ),
+    );
 
     return dio;
   }
-}
 
-class AuthInterceptor extends Interceptor {
-  final TokenStorage _tokenStorage;
-
-  AuthInterceptor(this._tokenStorage);
-
-  @override
-  void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
-    final token = await _tokenStorage.getToken();
-    if (token != null) {
-      options.headers['Authorization'] = 'Bearer $token';
-    }
-    handler.next(options);
+  static Future<void> setToken(String token) async {
+    await _storage.write(key: 'access_token', value: token);
   }
 
-  @override
-  void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 401) {
-      await _tokenStorage.deleteToken();
-    }
-    handler.next(err);
+  static Future<void> clearToken() async {
+    await _storage.delete(key: 'access_token');
+  }
+
+  static Future<String?> getToken() async {
+    return await _storage.read(key: 'access_token');
   }
 }

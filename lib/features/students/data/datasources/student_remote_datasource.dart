@@ -1,77 +1,91 @@
 import 'package:dio/dio.dart';
-import 'package:injectable/injectable.dart';
 import '../../../../core/network/api_constants.dart';
-import '../models/models.dart';
+import '../models/student.dart';
+import '../models/student_group.dart';
 
-abstract class StudentRemoteDataSource {
-  Future<List<Student>> getAll();
-  Future<List<Student>> getByGroupId(int groupId);
-  Future<Student> getById(int id);
-  Future<Student> create(StudentRequest request);
-  Future<Student> update(int id, StudentRequest request);
-  Future<Student> assignToGroup(int studentId, int groupId);
-  Future<Student> removeFromGroup(int studentId);
-}
+class StudentRemoteDataSource {
+  final Dio dio;
 
-@LazySingleton(as: StudentRemoteDataSource)
-class StudentRemoteDataSourceImpl implements StudentRemoteDataSource {
-  final Dio _dio;
+  StudentRemoteDataSource(this.dio);
 
-  StudentRemoteDataSourceImpl(this._dio);
-
-  @override
+  /// GET /api/students
   Future<List<Student>> getAll() async {
-    final response = await _dio.get(ApiConstants.students);
-    return (response.data as List)
-        .map((json) => Student.fromJson(json))
-        .toList();
+    final response = await dio.get(ApiConstants.students);
+    final list = response.data as List;
+    return list.map((json) => Student.fromJson(json)).toList();
   }
 
-  @override
-  Future<List<Student>> getByGroupId(int groupId) async {
-    final response = await _dio.get('${ApiConstants.students}/group/$groupId');
-    return (response.data as List)
-        .map((json) => Student.fromJson(json))
-        .toList();
-  }
-
-  @override
+  /// GET /api/students/{id}
   Future<Student> getById(int id) async {
-    final response = await _dio.get('${ApiConstants.students}/$id');
+    final response = await dio.get('${ApiConstants.students}/$id');
     return Student.fromJson(response.data);
   }
 
-  @override
+  /// GET /api/students/group/{groupId}
+  Future<List<Student>> getByGroupId(int groupId) async {
+    final response = await dio.get('${ApiConstants.students}/group/$groupId');
+    final list = response.data as List;
+    return list.map((json) => Student.fromJson(json)).toList();
+  }
+
+  /// POST /api/students
   Future<Student> create(StudentRequest request) async {
-    final response = await _dio.post(
+    final response = await dio.post(
       ApiConstants.students,
       data: request.toJson(),
     );
     return Student.fromJson(response.data);
   }
 
-  @override
+  /// PUT /api/students/{id}
   Future<Student> update(int id, StudentRequest request) async {
-    final response = await _dio.put(
+    final response = await dio.put(
       '${ApiConstants.students}/$id',
       data: request.toJson(),
     );
     return Student.fromJson(response.data);
   }
 
-  @override
-  Future<Student> assignToGroup(int studentId, int groupId) async {
-    final response = await _dio.patch(
-      '${ApiConstants.students}/$studentId/assign-group/$groupId',
+  /// POST /api/enrollments
+  Future<StudentGroup> addToGroup(StudentGroupRequest request) async {
+    final response = await dio.post(
+      ApiConstants.enrollments,
+      data: request.toJson(),
     );
-    return Student.fromJson(response.data);
+    return StudentGroup.fromJson(response.data);
   }
 
-  @override
-  Future<Student> removeFromGroup(int studentId) async {
-    final response = await _dio.patch(
-      '${ApiConstants.students}/$studentId/remove-from-group',
+  /// DELETE /api/enrollments/student/{studentId}/group/{groupId}
+  Future<void> removeFromGroup(int studentId, int groupId) async {
+    await dio.delete(
+      '${ApiConstants.enrollments}/student/$studentId/group/$groupId',
     );
-    return Student.fromJson(response.data);
+  }
+
+  /// GET /api/enrollments/student/{studentId}
+  Future<List<StudentGroup>> getStudentGroups(int studentId) async {
+    final response = await dio.get(
+      '${ApiConstants.enrollments}/student/$studentId',
+    );
+    final list = response.data as List;
+    return list.map((json) => StudentGroup.fromJson(json)).toList();
+  }
+
+  /// GET /api/enrollments/student/{studentId}/active
+  Future<List<StudentGroup>> getStudentActiveGroups(int studentId) async {
+    final response = await dio.get(
+      '${ApiConstants.enrollments}/student/$studentId/active',
+    );
+    final list = response.data as List;
+    return list.map((json) => StudentGroup.fromJson(json)).toList();
+  }
+
+  /// GET /api/enrollments/group/{groupId}
+  Future<List<StudentGroup>> getGroupStudents(int groupId) async {
+    final response = await dio.get(
+      '${ApiConstants.enrollments}/group/$groupId',
+    );
+    final list = response.data as List;
+    return list.map((json) => StudentGroup.fromJson(json)).toList();
   }
 }
