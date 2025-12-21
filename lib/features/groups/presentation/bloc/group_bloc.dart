@@ -1,51 +1,105 @@
+import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:injectable/injectable.dart';
-import '../../data/models/models.dart';
-import '../../data/repositories/group_repository.dart';
-import '../../../teachers/data/models/models.dart';
-import '../../../teachers/data/repositories/teacher_repository.dart';
 
-part 'group_bloc.freezed.dart';
+import '../../data/models/group_model.dart';
+import '../../data/repositories/group_repository.dart';
 
 // Events
-@freezed
-class GroupEvent with _$GroupEvent {
-  const factory GroupEvent.loadAll() = GroupLoadAll;
-  const factory GroupEvent.create({
-    required String name,
-    required int teacherId,
-    required double monthlyFee,
-  }) = GroupCreate;
-  const factory GroupEvent.update({
-    required int id,
-    required String name,
-    required int teacherId,
-    required double monthlyFee,
-  }) = GroupUpdate;
-  const factory GroupEvent.delete({required int id}) = GroupDelete;
+abstract class GroupEvent extends Equatable {
+  const GroupEvent();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class GroupLoadAll extends GroupEvent {}
+
+class GroupCreate extends GroupEvent {
+  final String name;
+  final int teacherId;
+  final double monthlyFee;
+
+  const GroupCreate({
+    required this.name,
+    required this.teacherId,
+    required this.monthlyFee,
+  });
+
+  @override
+  List<Object?> get props => [name, teacherId, monthlyFee];
+}
+
+class GroupUpdate extends GroupEvent {
+  final int id;
+  final String name;
+  final int teacherId;
+  final double monthlyFee;
+
+  const GroupUpdate({
+    required this.id,
+    required this.name,
+    required this.teacherId,
+    required this.monthlyFee,
+  });
+
+  @override
+  List<Object?> get props => [id, name, teacherId, monthlyFee];
+}
+
+class GroupDelete extends GroupEvent {
+  final int id;
+
+  const GroupDelete(this.id);
+
+  @override
+  List<Object?> get props => [id];
 }
 
 // States
-@freezed
-class GroupState with _$GroupState {
-  const factory GroupState.initial() = GroupInitial;
-  const factory GroupState.loading() = GroupLoading;
-  const factory GroupState.loaded({
-    required List<Group> groups,
-    required List<Teacher> teachers,
-  }) = GroupLoaded;
-  const factory GroupState.error({required String message}) = GroupError;
+abstract class GroupState extends Equatable {
+  const GroupState();
+
+  @override
+  List<Object?> get props => [];
 }
 
-// Bloc
-@injectable
-class GroupBloc extends Bloc<GroupEvent, GroupState> {
-  final GroupRepository _groupRepository;
-  final TeacherRepository _teacherRepository;
+class GroupInitial extends GroupState {}
 
-  GroupBloc(this._groupRepository, this._teacherRepository)
-      : super(const GroupState.initial()) {
+class GroupLoading extends GroupState {}
+
+class GroupLoaded extends GroupState {
+  final List<GroupModel> groups;
+
+  const GroupLoaded(this.groups);
+
+  @override
+  List<Object?> get props => [groups];
+}
+
+class GroupError extends GroupState {
+  final String message;
+
+  const GroupError(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+class GroupActionSuccess extends GroupState {
+  final String message;
+
+  const GroupActionSuccess(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+// BLoC
+class GroupBloc extends Bloc<GroupEvent, GroupState> {
+  final GroupRepository _repository;
+  List<GroupModel> _groups = [];
+
+  GroupBloc(this._repository) : super(GroupInitial()) {
     on<GroupLoadAll>(_onLoadAll);
     on<GroupCreate>(_onCreate);
     on<GroupUpdate>(_onUpdate);
@@ -56,18 +110,13 @@ class GroupBloc extends Bloc<GroupEvent, GroupState> {
     GroupLoadAll event,
     Emitter<GroupState> emit,
   ) async {
-    emit(const GroupState.loading());
-    try {
-      final results = await Future.wait([
-        _groupRepository.getAll(),
-        _teacherRepository.getAll(),
-      ]);
-      emit(GroupState.loaded(
-        groups: results[0] as List<Group>,
-        teachers: results[1] as List<Teacher>,
-      ));
-    } catch (e) {
-      emit(GroupState.error(message: e.toString()));
+    emit(GroupLoading());
+    final (groups, failure) = await _repository.getAllSortedByTeacher();
+    if (failure != null) {
+      emit(GroupError(failure.message));
+    } else {
+      _groups = groups ?? [];
+      emit(GroupLoaded(_groups));
     }
   }
 
@@ -75,15 +124,21 @@ class GroupBloc extends Bloc<GroupEvent, GroupState> {
     GroupCreate event,
     Emitter<GroupState> emit,
   ) async {
-    try {
-      await _groupRepository.create(GroupRequest(
+    emit(GroupLoading());
+    final (group, failure) = await _repository.create(
+      GroupRequest(
         name: event.name,
         teacherId: event.teacherId,
         monthlyFee: event.monthlyFee,
-      ));
-      add(const GroupLoadAll());
-    } catch (e) {
-      emit(GroupState.error(message: e.toString()));
+      ),
+    );
+    if (failure != null) {
+      emit(GroupError(failure.message));
+      emit(GroupLoaded(_groups));
+    } else {
+      _groups = [..._groups, group!];
+      emit(const GroupActionSuccess('Group created successfully'));
+      emit(GroupLoaded(_groups));
     }
   }
 
@@ -91,18 +146,22 @@ class GroupBloc extends Bloc<GroupEvent, GroupState> {
     GroupUpdate event,
     Emitter<GroupState> emit,
   ) async {
-    try {
-      await _groupRepository.update(
-        event.id,
-        GroupRequest(
-          name: event.name,
-          teacherId: event.teacherId,
-          monthlyFee: event.monthlyFee,
-        ),
-      );
-      add(const GroupLoadAll());
-    } catch (e) {
-      emit(GroupState.error(message: e.toString()));
+    emit(GroupLoading());
+    final (group, failure) = await _repository.update(
+      event.id,
+      GroupRequest(
+        name: event.name,
+        teacherId: event.teacherId,
+        monthlyFee: event.monthlyFee,
+      ),
+    );
+    if (failure != null) {
+      emit(GroupError(failure.message));
+      emit(GroupLoaded(_groups));
+    } else {
+      _groups = _groups.map((g) => g.id == event.id ? group! : g).toList();
+      emit(const GroupActionSuccess('Group updated successfully'));
+      emit(GroupLoaded(_groups));
     }
   }
 
@@ -110,11 +169,15 @@ class GroupBloc extends Bloc<GroupEvent, GroupState> {
     GroupDelete event,
     Emitter<GroupState> emit,
   ) async {
-    try {
-      await _groupRepository.delete(event.id);
-      add(const GroupLoadAll());
-    } catch (e) {
-      emit(GroupState.error(message: e.toString()));
+    emit(GroupLoading());
+    final failure = await _repository.delete(event.id);
+    if (failure != null) {
+      emit(GroupError(failure.message));
+      emit(GroupLoaded(_groups));
+    } else {
+      _groups = _groups.where((g) => g.id != event.id).toList();
+      emit(const GroupActionSuccess('Group deleted successfully'));
+      emit(GroupLoaded(_groups));
     }
   }
 }

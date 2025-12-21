@@ -1,74 +1,98 @@
-import 'package:dio/dio.dart';
-import 'package:injectable/injectable.dart';
-import '../../../../core/network/api_constants.dart';
-import '../models/models.dart';
+import 'package:intl/intl.dart';
+
+import '../../../../core/api/api_client.dart';
+import '../models/attendance_model.dart';
 
 abstract class AttendanceRemoteDataSource {
-  Future<List<Attendance>> createForGroup(AttendanceRequest request);
-  Future<List<Attendance>> getByGroupAndDate(int groupId, DateTime date);
-  Future<List<Attendance>> getByGroupAndMonth(int groupId, int year, int month);
-  Future<List<Attendance>> getByStudentAndMonth(int studentId, int year, int month);
-  Future<Attendance> updateStatus(int id, AttendanceUpdateRequest request);
+  Future<List<AttendanceModel>> createForGroup(AttendanceRequest request);
+  Future<AttendanceModel> getById(int id);
+  Future<List<AttendanceModel>> getByGroupAndDate(int groupId, DateTime date);
+  Future<List<AttendanceModel>> getByMonth(int year, int month);
+  Future<List<AttendanceModel>> getByGroupIdAndMonth(int groupId, int year, int month);
+  Future<List<AttendanceModel>> getByStudentIdAndMonth(int studentId, int year, int month);
+  Future<List<AttendanceModel>> getByStudentIdAndGroupIdAndMonth(int studentId, int groupId, int year, int month);
+  Future<AttendanceModel> update(int id, AttendanceUpdateRequest request);
 }
 
-@LazySingleton(as: AttendanceRemoteDataSource)
 class AttendanceRemoteDataSourceImpl implements AttendanceRemoteDataSource {
-  final Dio _dio;
+  final ApiClient _apiClient;
+  final _dateFormat = DateFormat('yyyy-MM-dd');
 
-  AttendanceRemoteDataSourceImpl(this._dio);
-
-  @override
-  Future<List<Attendance>> createForGroup(AttendanceRequest request) async {
-    final response = await _dio.post(
-      ApiConstants.attendances,
-      data: {
-        'groupId': request.groupId,
-        'date': request.date.toIso8601String().split('T')[0],
-        'absentStudentIds': request.absentStudentIds ?? [],
-      },
-    );
-    return (response.data as List)
-        .map((json) => Attendance.fromJson(json))
-        .toList();
-  }
+  AttendanceRemoteDataSourceImpl(this._apiClient);
 
   @override
-  Future<List<Attendance>> getByGroupAndDate(int groupId, DateTime date) async {
-    final dateStr = date.toIso8601String().split('T')[0];
-    final response = await _dio.get(
-      '${ApiConstants.attendances}/group/$groupId/date/$dateStr',
-    );
-    return (response.data as List)
-        .map((json) => Attendance.fromJson(json))
-        .toList();
-  }
-
-  @override
-  Future<List<Attendance>> getByGroupAndMonth(int groupId, int year, int month) async {
-    final response = await _dio.get(
-      '${ApiConstants.attendances}/group/$groupId/month/$year/$month',
-    );
-    return (response.data as List)
-        .map((json) => Attendance.fromJson(json))
-        .toList();
-  }
-
-  @override
-  Future<List<Attendance>> getByStudentAndMonth(int studentId, int year, int month) async {
-    final response = await _dio.get(
-      '${ApiConstants.attendances}/student/$studentId/month/$year/$month',
-    );
-    return (response.data as List)
-        .map((json) => Attendance.fromJson(json))
-        .toList();
-  }
-
-  @override
-  Future<Attendance> updateStatus(int id, AttendanceUpdateRequest request) async {
-    final response = await _dio.patch(
-      '${ApiConstants.attendances}/$id',
+  Future<List<AttendanceModel>> createForGroup(AttendanceRequest request) async {
+    final response = await _apiClient.post<List<dynamic>>(
+      '/api/attendances',
       data: request.toJson(),
     );
-    return Attendance.fromJson(response.data);
+    return (response.data ?? [])
+        .map((json) => AttendanceModel.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<AttendanceModel> getById(int id) async {
+    final response =
+        await _apiClient.get<Map<String, dynamic>>('/api/attendances/$id');
+    return AttendanceModel.fromJson(response.data!);
+  }
+
+  @override
+  Future<List<AttendanceModel>> getByGroupAndDate(int groupId, DateTime date) async {
+    final dateStr = _dateFormat.format(date);
+    final response = await _apiClient
+        .get<List<dynamic>>('/api/attendances/group/$groupId/date/$dateStr');
+    return (response.data ?? [])
+        .map((json) => AttendanceModel.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<List<AttendanceModel>> getByMonth(int year, int month) async {
+    final response = await _apiClient
+        .get<List<dynamic>>('/api/attendances/month/$year/$month');
+    return (response.data ?? [])
+        .map((json) => AttendanceModel.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<List<AttendanceModel>> getByGroupIdAndMonth(
+      int groupId, int year, int month) async {
+    final response = await _apiClient
+        .get<List<dynamic>>('/api/attendances/group/$groupId/month/$year/$month');
+    return (response.data ?? [])
+        .map((json) => AttendanceModel.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<List<AttendanceModel>> getByStudentIdAndMonth(
+      int studentId, int year, int month) async {
+    final response = await _apiClient
+        .get<List<dynamic>>('/api/attendances/student/$studentId/month/$year/$month');
+    return (response.data ?? [])
+        .map((json) => AttendanceModel.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<List<AttendanceModel>> getByStudentIdAndGroupIdAndMonth(
+      int studentId, int groupId, int year, int month) async {
+    final response = await _apiClient
+        .get<List<dynamic>>('/api/attendances/student/$studentId/group/$groupId/month/$year/$month');
+    return (response.data ?? [])
+        .map((json) => AttendanceModel.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<AttendanceModel> update(int id, AttendanceUpdateRequest request) async {
+    final response = await _apiClient.patch<Map<String, dynamic>>(
+      '/api/attendances/$id',
+      data: request.toJson(),
+    );
+    return AttendanceModel.fromJson(response.data!);
   }
 }

@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../../../../core/di/injection.dart';
-import '../../data/models/models.dart';
-import '../../../groups/data/models/models.dart';
-import '../../../students/data/models/models.dart';
+import '../../../enrollments/data/models/enrollment_model.dart';
+import '../../../enrollments/data/repositories/enrollment_repository.dart';
+import '../../../groups/data/models/group_model.dart';
+import '../../../groups/data/repositories/group_repository.dart';
+import '../../../students/data/models/student_model.dart';
+import '../../../students/data/repositories/student_repository.dart';
+import '../../data/models/attendance_model.dart';
 import '../bloc/attendance_bloc.dart';
 
 class AttendancePage extends StatelessWidget {
@@ -13,353 +19,611 @@ class AttendancePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => getIt<AttendanceBloc>()..add(const AttendanceLoadGroups()),
+      create: (_) => getIt<AttendanceBloc>(),
       child: const AttendanceView(),
     );
   }
 }
 
-class AttendanceView extends StatelessWidget {
+class AttendanceView extends StatefulWidget {
   const AttendanceView({super.key});
+
+  @override
+  State<AttendanceView> createState() => _AttendanceViewState();
+}
+
+class _AttendanceViewState extends State<AttendanceView> {
+  List<GroupModel> _groups = [];
+  GroupModel? _selectedGroup;
+  final DateTime _today = DateTime.now();
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGroups();
+  }
+
+  Future<void> _loadGroups() async {
+    final (groups, _) = await getIt<GroupRepository>().getAll();
+    if (mounted) {
+      setState(() {
+        _groups = groups ?? [];
+        _loading = false;
+        if (_groups.isNotEmpty) {
+          _selectedGroup = _groups.first;
+          _loadAttendance();
+        }
+      });
+    }
+  }
+
+  void _loadAttendance() {
+    if (_selectedGroup != null) {
+      context.read<AttendanceBloc>().add(
+            AttendanceLoadByGroupAndDate(
+              groupId: _selectedGroup!.id,
+              date: _today,
+            ),
+          );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Attendance'),
+        title: const Text('Davomat'),
       ),
-      body: BlocConsumer<AttendanceBloc, AttendanceState>(
-        listener: (context, state) {
-          if (state is AttendanceError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: Colors.red,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _groups.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.groups_outlined,
+                        size: 64,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Guruhlar mavjud emas',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text('Avval guruh yarating'),
+                    ],
+                  ),
+                )
+              : Column(
+                  children: [
+                    _buildHeader(),
+                    Expanded(child: _buildAttendanceList()),
+                  ],
+                ),
+      floatingActionButton: _buildFab(),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Card(
+      margin: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // Today's date display (not changeable)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
               ),
-            );
-          } else if (state is AttendanceSaved) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Attendance saved successfully'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
-        },
-        builder: (context, state) {
-          return state.when(
-            initial: () => const SizedBox.shrink(),
-            loading: () => const Center(child: CircularProgressIndicator()),
-            groupsLoaded: (groups) => _buildGroupSelection(context, groups),
-            ready: (groups, selectedGroup, selectedDate, students,
-                    existingAttendance, absentStudentIds, hasExisting) =>
-                _buildAttendanceForm(
-              context,
-              groups,
-              selectedGroup,
-              selectedDate,
-              students,
-              existingAttendance,
-              absentStudentIds,
-              hasExisting,
-            ),
-            saving: () => const Center(child: CircularProgressIndicator()),
-            saved: () => const SizedBox.shrink(),
-            error: (message) => Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Row(
                 children: [
-                  Text(message),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () => context
-                        .read<AttendanceBloc>()
-                        .add(const AttendanceLoadGroups()),
-                    child: const Text('Retry'),
+                  Icon(
+                    Icons.calendar_today,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    DateFormat('EEEE, dd MMMM yyyy').format(_today),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
                 ],
               ),
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildGroupSelection(BuildContext context, List<Group> groups) {
-    if (groups.isEmpty) {
-      return const Center(child: Text('No groups available'));
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Select a group to take attendance',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: ListView.builder(
-              itemCount: groups.length,
-              itemBuilder: (context, index) {
-                final group = groups[index];
-                return Card(
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      child: Text(group.name[0].toUpperCase()),
-                    ),
-                    title: Text(group.name),
-                    subtitle: Text('${group.teacherName} • ${group.studentsCount} students'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      context.read<AttendanceBloc>().add(
-                            AttendanceSelectGroup(group: group),
-                          );
-                    },
-                  ),
-                );
+            const SizedBox(height: 16),
+            DropdownButtonFormField<GroupModel>(
+              value: _selectedGroup,
+              decoration: const InputDecoration(
+                labelText: 'Guruh',
+                prefixIcon: Icon(Icons.group_outlined),
+                border: OutlineInputBorder(),
+              ),
+              items: _groups
+                  .map((g) => DropdownMenuItem(
+                        value: g,
+                        child: Text('${g.name} (${g.teacherName})'),
+                      ))
+                  .toList(),
+              onChanged: (value) {
+                setState(() => _selectedGroup = value);
+                _loadAttendance();
               },
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildAttendanceForm(
-    BuildContext context,
-    List<Group> groups,
-    Group selectedGroup,
-    DateTime selectedDate,
-    List<Student> students,
-    List<Attendance> existingAttendance,
-    Set<int> absentStudentIds,
-    bool hasExistingAttendance,
-  ) {
-    final dateFormat = DateFormat('dd MMM yyyy');
-    final presentCount = students.length - absentStudentIds.length;
-    final absentCount = absentStudentIds.length;
+  Widget? _buildFab() {
+    if (_groups.isEmpty || _selectedGroup == null) return null;
 
-    return Column(
-      children: [
-        // Header with group and date selection
-        Container(
-          padding: const EdgeInsets.all(16),
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Column(
-            children: [
-              Row(
+    return BlocBuilder<AttendanceBloc, AttendanceState>(
+      builder: (context, state) {
+        // Hide FAB if attendance already taken for today
+        if (state is AttendanceLoaded && state.attendances.isNotEmpty) {
+          return const SizedBox.shrink();
+        }
+        return FloatingActionButton.extended(
+          onPressed: () => _showTakeAttendanceDialog(context),
+          icon: const Icon(Icons.fact_check),
+          label: const Text('Davomat olish'),
+        );
+      },
+    );
+  }
+
+  Widget _buildAttendanceList() {
+    return BlocConsumer<AttendanceBloc, AttendanceState>(
+      listener: (context, state) {
+        if (state is AttendanceError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+        if (state is AttendanceActionSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.message)),
+          );
+        }
+      },
+      builder: (context, state) {
+        if (state is AttendanceLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (state is AttendanceLoaded) {
+          if (state.attendances.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.fact_check_outlined,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Davomat olinmagan',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('Davomat olish tugmasini bosing'),
+                ],
+              ),
+            );
+          }
+          // Show attendance (read-only, no toggle)
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: state.attendances.length,
+            itemBuilder: (context, index) {
+              final attendance = state.attendances[index];
+              return _AttendanceCard(attendance: attendance);
+            },
+          );
+        }
+        return const Center(child: Text('Guruh tanlang'));
+      },
+    );
+  }
+
+  void _showTakeAttendanceDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => BlocProvider.value(
+        value: context.read<AttendanceBloc>(),
+        child: TakeAttendanceDialog(
+          groupId: _selectedGroup!.id,
+          groupName: _selectedGroup!.name,
+          onSuccess: _loadAttendance,
+        ),
+      ),
+    );
+  }
+}
+
+// Read-only attendance card (no toggle switch)
+class _AttendanceCard extends StatelessWidget {
+  final AttendanceModel attendance;
+
+  const _AttendanceCard({required this.attendance});
+
+  @override
+  Widget build(BuildContext context) {
+    final isPresent = attendance.status == AttendanceStatus.PRESENT;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: CircleAvatar(
+          radius: 24,
+          backgroundColor: isPresent
+              ? Colors.green.withOpacity(0.2)
+              : Colors.red.withOpacity(0.2),
+          child: Icon(
+            isPresent ? Icons.check : Icons.close,
+            color: isPresent ? Colors.green : Colors.red,
+            size: 28,
+          ),
+        ),
+        title: Text(
+          attendance.studentName,
+          style: const TextStyle(fontWeight: FontWeight.w500),
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isPresent
+                ? Colors.green.withOpacity(0.1)
+                : Colors.red.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isPresent ? Colors.green : Colors.red,
+            ),
+          ),
+          child: Text(
+            isPresent ? 'Keldi' : 'Kelmadi',
+            style: TextStyle(
+              color: isPresent ? Colors.green : Colors.red,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class TakeAttendanceDialog extends StatefulWidget {
+  final int groupId;
+  final String groupName;
+  final VoidCallback onSuccess;
+
+  const TakeAttendanceDialog({
+    super.key,
+    required this.groupId,
+    required this.groupName,
+    required this.onSuccess,
+  });
+
+  @override
+  State<TakeAttendanceDialog> createState() => _TakeAttendanceDialogState();
+}
+
+class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
+  List<EnrollmentModel> _enrollments = [];
+  Map<int, StudentModel> _studentDetails = {};
+  Map<int, bool> _attendanceStatus = {}; // true = present, false = absent
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStudents();
+  }
+
+  Future<void> _loadStudents() async {
+    final (enrollments, _) =
+        await getIt<EnrollmentRepository>().getGroupStudents(widget.groupId);
+
+    final studentDetails = <int, StudentModel>{};
+    final attendanceStatus = <int, bool>{};
+
+    if (enrollments != null) {
+      for (final enrollment in enrollments) {
+        final (student, _) =
+            await getIt<StudentRepository>().getById(enrollment.studentId);
+        if (student != null) {
+          studentDetails[enrollment.studentId] = student;
+          attendanceStatus[enrollment.studentId] = true; // Default: present
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _enrollments = enrollments ?? [];
+        _studentDetails = studentDetails;
+        _attendanceStatus = attendanceStatus;
+        _loading = false;
+      });
+    }
+  }
+
+  void _markAbsent(int studentId) {
+    final student = _studentDetails[studentId];
+    if (student == null) return;
+
+    // 1. Mark as absent (red) immediately
+    setState(() {
+      _attendanceStatus[studentId] = false;
+    });
+
+    // 2. Open SMS app with text
+    final today = DateTime.now();
+    final dateStr = DateFormat('dd.MM.yyyy').format(today);
+    final message =
+        'Hurmatli ${student.parentName}, farzandingiz ${student.fullName} bugun ($dateStr) "${widget.groupName}" guruhidagi darsga kelmadi.';
+
+    final phone = student.parentPhoneNumber.replaceAll('+', '');
+    final uri = Uri.parse('sms:+$phone?body=${Uri.encodeComponent(message)}');
+
+    launchUrl(uri);
+  }
+
+  void _markPresent(int studentId) {
+    setState(() {
+      _attendanceStatus[studentId] = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateTime.now();
+
+    return Dialog(
+      child: Container(
+        width: double.maxFinite,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+          maxWidth: 500,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'Davomat olish',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.groupName,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      DateFormat('dd MMMM yyyy').format(today),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Content
+            Flexible(
+              child: _loading
+                  ? const SizedBox(
+                      height: 200,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : _enrollments.isEmpty
+                      ? const SizedBox(
+                          height: 100,
+                          child: Center(child: Text('O\'quvchilar yo\'q')),
+                        )
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _enrollments.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final enrollment = _enrollments[index];
+                            final isPresent =
+                                _attendanceStatus[enrollment.studentId] ?? true;
+                            final student = _studentDetails[enrollment.studentId];
+
+                            return _StudentAttendanceTile(
+                              studentName: enrollment.studentName,
+                              parentPhone: student?.parentPhoneNumber ?? '',
+                              isPresent: isPresent,
+                              onTap: () {
+                                if (isPresent) {
+                                  _markAbsent(enrollment.studentId);
+                                } else {
+                                  _markPresent(enrollment.studentId);
+                                }
+                              },
+                            );
+                          },
+                        ),
+            ),
+
+            // Actions
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
                 children: [
                   Expanded(
-                    child: DropdownButtonFormField<Group>(
-                      value: selectedGroup,
-                      decoration: const InputDecoration(
-                        labelText: 'Group',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                      items: groups.map((group) {
-                        return DropdownMenuItem(
-                          value: group,
-                          child: Text(group.name),
-                        );
-                      }).toList(),
-                      onChanged: (group) {
-                        if (group != null) {
-                          context.read<AttendanceBloc>().add(
-                                AttendanceSelectGroup(group: group),
-                              );
-                        }
-                      },
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Bekor qilish'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: InkWell(
-                      onTap: () => _selectDate(context, selectedDate),
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Date',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(dateFormat.format(selectedDate)),
-                            const Icon(Icons.calendar_today, size: 18),
-                          ],
-                        ),
-                      ),
+                    child: FilledButton(
+                      onPressed: _enrollments.isEmpty ? null : _submit,
+                      child: const Text('Saqlash'),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildStatChip(
-                    context,
-                    Icons.people,
-                    'Total: ${students.length}',
-                    Colors.blue,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _submit() {
+    final absentIds = _attendanceStatus.entries
+        .where((e) => e.value == false)
+        .map((e) => e.key)
+        .toList();
+
+    context.read<AttendanceBloc>().add(AttendanceCreate(
+          groupId: widget.groupId,
+          date: DateTime.now(),
+          absentStudentIds: absentIds,
+        ));
+
+    Navigator.pop(context);
+    widget.onSuccess();
+  }
+}
+
+class _StudentAttendanceTile extends StatelessWidget {
+  final String studentName;
+  final String parentPhone;
+  final bool isPresent;
+  final VoidCallback onTap;
+
+  const _StudentAttendanceTile({
+    required this.studentName,
+    required this.parentPhone,
+    required this.isPresent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: isPresent
+          ? Colors.green.withOpacity(0.1)
+          : Colors.red.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isPresent ? Colors.green : Colors.red,
+              width: 2,
+            ),
+          ),
+          child: Row(
+            children: [
+              // Large status indicator
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: isPresent
+                      ? Colors.green.withOpacity(0.2)
+                      : Colors.red.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isPresent ? Colors.green : Colors.red,
+                    width: 3,
                   ),
-                  _buildStatChip(
-                    context,
-                    Icons.check_circle,
-                    'Present: $presentCount',
-                    Colors.green,
+                ),
+                child: Icon(
+                  isPresent ? Icons.check : Icons.close,
+                  color: isPresent ? Colors.green : Colors.red,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Student info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      studentName,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      parentPhone,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              // Status badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isPresent ? Colors.green : Colors.red,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  isPresent ? 'KELDI' : 'KELMADI',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
-                  _buildStatChip(
-                    context,
-                    Icons.cancel,
-                    'Absent: $absentCount',
-                    Colors.red,
-                  ),
-                ],
+                ),
               ),
             ],
           ),
         ),
-
-        // Status indicator
-        if (hasExistingAttendance)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-            color: Colors.orange.withOpacity(0.2),
-            child: Row(
-              children: [
-                const Icon(Icons.info, color: Colors.orange, size: 18),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Attendance already recorded. Tap to modify individual status.',
-                    style: TextStyle(color: Colors.orange),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-        // Student list
-        Expanded(
-          child: students.isEmpty
-              ? const Center(child: Text('No students in this group'))
-              : ListView.builder(
-                  itemCount: students.length,
-                  itemBuilder: (context, index) {
-                    final student = students[index];
-                    final isAbsent = absentStudentIds.contains(student.id);
-                    final attendance = existingAttendance
-                        .where((a) => a.studentId == student.id)
-                        .firstOrNull;
-
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: isAbsent ? Colors.red : Colors.green,
-                        child: Text(
-                          student.fullName[0].toUpperCase(),
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
-                      title: Text(student.fullName),
-                      subtitle: Text(isAbsent ? 'Absent' : 'Present'),
-                      trailing: hasExistingAttendance && attendance != null
-                          ? PopupMenuButton<String>(
-                              onSelected: (status) {
-                                context.read<AttendanceBloc>().add(
-                                      AttendanceUpdateStatus(
-                                        attendanceId: attendance.id,
-                                        status: status,
-                                      ),
-                                    );
-                              },
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'PRESENT',
-                                  child: Text('Mark Present'),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'ABSENT',
-                                  child: Text('Mark Absent'),
-                                ),
-                              ],
-                            )
-                          : Switch(
-                              value: !isAbsent,
-                              activeColor: Colors.green,
-                              onChanged: (_) {
-                                context.read<AttendanceBloc>().add(
-                                      AttendanceToggleStudent(studentId: student.id),
-                                    );
-                              },
-                            ),
-                    );
-                  },
-                ),
-        ),
-
-        // Save button (only if no existing attendance)
-        if (!hasExistingAttendance && students.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () {
-                  context.read<AttendanceBloc>().add(const AttendanceSave());
-                },
-                icon: const Icon(Icons.save),
-                label: const Text('Save Attendance'),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildStatChip(
-    BuildContext context,
-    IconData icon,
-    String label,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(color: color, fontWeight: FontWeight.w500),
-          ),
-        ],
       ),
     );
-  }
-
-  Future<void> _selectDate(BuildContext context, DateTime currentDate) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: currentDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-
-    if (picked != null && context.mounted) {
-      context.read<AttendanceBloc>().add(AttendanceSelectDate(date: picked));
-    }
   }
 }

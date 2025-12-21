@@ -1,42 +1,98 @@
+import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:injectable/injectable.dart';
-import '../../data/models/models.dart';
+
+import '../../data/models/teacher_model.dart';
 import '../../data/repositories/teacher_repository.dart';
 
-part 'teacher_bloc.freezed.dart';
-
 // Events
-@freezed
-class TeacherEvent with _$TeacherEvent {
-  const factory TeacherEvent.loadAll() = TeacherLoadAll;
-  const factory TeacherEvent.create({
-    required String fullName,
-    required String phoneNumber,
-  }) = TeacherCreate;
-  const factory TeacherEvent.update({
-    required int id,
-    required String fullName,
-    required String phoneNumber,
-  }) = TeacherUpdate;
-  const factory TeacherEvent.delete({required int id}) = TeacherDelete;
+abstract class TeacherEvent extends Equatable {
+  const TeacherEvent();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class TeacherLoadAll extends TeacherEvent {}
+
+class TeacherCreate extends TeacherEvent {
+  final String fullName;
+  final String phoneNumber;
+
+  const TeacherCreate({required this.fullName, required this.phoneNumber});
+
+  @override
+  List<Object?> get props => [fullName, phoneNumber];
+}
+
+class TeacherUpdate extends TeacherEvent {
+  final int id;
+  final String fullName;
+  final String phoneNumber;
+
+  const TeacherUpdate({
+    required this.id,
+    required this.fullName,
+    required this.phoneNumber,
+  });
+
+  @override
+  List<Object?> get props => [id, fullName, phoneNumber];
+}
+
+class TeacherDelete extends TeacherEvent {
+  final int id;
+
+  const TeacherDelete(this.id);
+
+  @override
+  List<Object?> get props => [id];
 }
 
 // States
-@freezed
-class TeacherState with _$TeacherState {
-  const factory TeacherState.initial() = TeacherInitial;
-  const factory TeacherState.loading() = TeacherLoading;
-  const factory TeacherState.loaded({required List<Teacher> teachers}) = TeacherLoaded;
-  const factory TeacherState.error({required String message}) = TeacherError;
+abstract class TeacherState extends Equatable {
+  const TeacherState();
+
+  @override
+  List<Object?> get props => [];
 }
 
-// Bloc
-@injectable
+class TeacherInitial extends TeacherState {}
+
+class TeacherLoading extends TeacherState {}
+
+class TeacherLoaded extends TeacherState {
+  final List<TeacherModel> teachers;
+
+  const TeacherLoaded(this.teachers);
+
+  @override
+  List<Object?> get props => [teachers];
+}
+
+class TeacherError extends TeacherState {
+  final String message;
+
+  const TeacherError(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+class TeacherActionSuccess extends TeacherState {
+  final String message;
+
+  const TeacherActionSuccess(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+// BLoC
 class TeacherBloc extends Bloc<TeacherEvent, TeacherState> {
   final TeacherRepository _repository;
+  List<TeacherModel> _teachers = [];
 
-  TeacherBloc(this._repository) : super(const TeacherState.initial()) {
+  TeacherBloc(this._repository) : super(TeacherInitial()) {
     on<TeacherLoadAll>(_onLoadAll);
     on<TeacherCreate>(_onCreate);
     on<TeacherUpdate>(_onUpdate);
@@ -47,12 +103,13 @@ class TeacherBloc extends Bloc<TeacherEvent, TeacherState> {
     TeacherLoadAll event,
     Emitter<TeacherState> emit,
   ) async {
-    emit(const TeacherState.loading());
-    try {
-      final teachers = await _repository.getAll();
-      emit(TeacherState.loaded(teachers: teachers));
-    } catch (e) {
-      emit(TeacherState.error(message: e.toString()));
+    emit(TeacherLoading());
+    final (teachers, failure) = await _repository.getAll();
+    if (failure != null) {
+      emit(TeacherError(failure.message));
+    } else {
+      _teachers = teachers ?? [];
+      emit(TeacherLoaded(_teachers));
     }
   }
 
@@ -60,14 +117,17 @@ class TeacherBloc extends Bloc<TeacherEvent, TeacherState> {
     TeacherCreate event,
     Emitter<TeacherState> emit,
   ) async {
-    try {
-      await _repository.create(TeacherRequest(
-        fullName: event.fullName,
-        phoneNumber: event.phoneNumber,
-      ));
-      add(const TeacherLoadAll());
-    } catch (e) {
-      emit(TeacherState.error(message: e.toString()));
+    emit(TeacherLoading());
+    final (teacher, failure) = await _repository.create(
+      TeacherRequest(fullName: event.fullName, phoneNumber: event.phoneNumber),
+    );
+    if (failure != null) {
+      emit(TeacherError(failure.message));
+      emit(TeacherLoaded(_teachers));
+    } else {
+      _teachers = [..._teachers, teacher!];
+      emit(const TeacherActionSuccess('Teacher created successfully'));
+      emit(TeacherLoaded(_teachers));
     }
   }
 
@@ -75,17 +135,18 @@ class TeacherBloc extends Bloc<TeacherEvent, TeacherState> {
     TeacherUpdate event,
     Emitter<TeacherState> emit,
   ) async {
-    try {
-      await _repository.update(
-        event.id,
-        TeacherRequest(
-          fullName: event.fullName,
-          phoneNumber: event.phoneNumber,
-        ),
-      );
-      add(const TeacherLoadAll());
-    } catch (e) {
-      emit(TeacherState.error(message: e.toString()));
+    emit(TeacherLoading());
+    final (teacher, failure) = await _repository.update(
+      event.id,
+      TeacherRequest(fullName: event.fullName, phoneNumber: event.phoneNumber),
+    );
+    if (failure != null) {
+      emit(TeacherError(failure.message));
+      emit(TeacherLoaded(_teachers));
+    } else {
+      _teachers = _teachers.map((t) => t.id == event.id ? teacher! : t).toList();
+      emit(const TeacherActionSuccess('Teacher updated successfully'));
+      emit(TeacherLoaded(_teachers));
     }
   }
 
@@ -93,11 +154,15 @@ class TeacherBloc extends Bloc<TeacherEvent, TeacherState> {
     TeacherDelete event,
     Emitter<TeacherState> emit,
   ) async {
-    try {
-      await _repository.delete(event.id);
-      add(const TeacherLoadAll());
-    } catch (e) {
-      emit(TeacherState.error(message: e.toString()));
+    emit(TeacherLoading());
+    final failure = await _repository.delete(event.id);
+    if (failure != null) {
+      emit(TeacherError(failure.message));
+      emit(TeacherLoaded(_teachers));
+    } else {
+      _teachers = _teachers.where((t) => t.id != event.id).toList();
+      emit(const TeacherActionSuccess('Teacher deleted successfully'));
+      emit(TeacherLoaded(_teachers));
     }
   }
 }

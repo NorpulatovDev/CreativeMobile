@@ -1,195 +1,198 @@
+import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:injectable/injectable.dart';
-import '../../data/models/models.dart';
-import '../../data/repositories/attendance_repository.dart';
-import '../../../groups/data/models/models.dart';
-import '../../../groups/data/repositories/group_repository.dart';
-import '../../../students/data/models/models.dart';
-import '../../../students/data/repositories/student_repository.dart';
 
-part 'attendance_bloc.freezed.dart';
+import '../../data/models/attendance_model.dart';
+import '../../data/repositories/attendance_repository.dart';
 
 // Events
-@freezed
-class AttendanceEvent with _$AttendanceEvent {
-  const factory AttendanceEvent.loadGroups() = AttendanceLoadGroups;
-  const factory AttendanceEvent.selectGroup({required Group group}) = AttendanceSelectGroup;
-  const factory AttendanceEvent.selectDate({required DateTime date}) = AttendanceSelectDate;
-  const factory AttendanceEvent.loadForGroupAndDate({
-    required int groupId,
-    required DateTime date,
-  }) = AttendanceLoadForGroupAndDate;
-  const factory AttendanceEvent.toggleStudent({required int studentId}) = AttendanceToggleStudent;
-  const factory AttendanceEvent.saveAttendance() = AttendanceSave;
-  const factory AttendanceEvent.updateStatus({
-    required int attendanceId,
-    required String status,
-  }) = AttendanceUpdateStatus;
+abstract class AttendanceEvent extends Equatable {
+  const AttendanceEvent();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class AttendanceLoadByGroupAndDate extends AttendanceEvent {
+  final int groupId;
+  final DateTime date;
+
+  const AttendanceLoadByGroupAndDate({required this.groupId, required this.date});
+
+  @override
+  List<Object?> get props => [groupId, date];
+}
+
+class AttendanceLoadByGroupAndMonth extends AttendanceEvent {
+  final int groupId;
+  final int year;
+  final int month;
+
+  const AttendanceLoadByGroupAndMonth({
+    required this.groupId,
+    required this.year,
+    required this.month,
+  });
+
+  @override
+  List<Object?> get props => [groupId, year, month];
+}
+
+class AttendanceLoadByStudentAndMonth extends AttendanceEvent {
+  final int studentId;
+  final int year;
+  final int month;
+
+  const AttendanceLoadByStudentAndMonth({
+    required this.studentId,
+    required this.year,
+    required this.month,
+  });
+
+  @override
+  List<Object?> get props => [studentId, year, month];
+}
+
+class AttendanceCreate extends AttendanceEvent {
+  final int groupId;
+  final DateTime date;
+  final List<int> absentStudentIds;
+
+  const AttendanceCreate({
+    required this.groupId,
+    required this.date,
+    required this.absentStudentIds,
+  });
+
+  @override
+  List<Object?> get props => [groupId, date, absentStudentIds];
+}
+
+class AttendanceUpdateStatus extends AttendanceEvent {
+  final int id;
+  final AttendanceStatus status;
+
+  const AttendanceUpdateStatus({required this.id, required this.status});
+
+  @override
+  List<Object?> get props => [id, status];
 }
 
 // States
-@freezed
-class AttendanceState with _$AttendanceState {
-  const factory AttendanceState.initial() = AttendanceInitial;
-  const factory AttendanceState.loading() = AttendanceLoading;
-  const factory AttendanceState.groupsLoaded({
-    required List<Group> groups,
-  }) = AttendanceGroupsLoaded;
-  const factory AttendanceState.ready({
-    required List<Group> groups,
-    required Group selectedGroup,
-    required DateTime selectedDate,
-    required List<Student> students,
-    required List<Attendance> existingAttendance,
-    required Set<int> absentStudentIds,
-    required bool hasExistingAttendance,
-  }) = AttendanceReady;
-  const factory AttendanceState.saving() = AttendanceSaving;
-  const factory AttendanceState.saved() = AttendanceSaved;
-  const factory AttendanceState.error({required String message}) = AttendanceError;
+abstract class AttendanceState extends Equatable {
+  const AttendanceState();
+
+  @override
+  List<Object?> get props => [];
 }
 
-// Bloc
-@injectable
+class AttendanceInitial extends AttendanceState {}
+
+class AttendanceLoading extends AttendanceState {}
+
+class AttendanceLoaded extends AttendanceState {
+  final List<AttendanceModel> attendances;
+
+  const AttendanceLoaded(this.attendances);
+
+  @override
+  List<Object?> get props => [attendances];
+}
+
+class AttendanceError extends AttendanceState {
+  final String message;
+
+  const AttendanceError(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+class AttendanceActionSuccess extends AttendanceState {
+  final String message;
+
+  const AttendanceActionSuccess(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+// BLoC
 class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
-  final AttendanceRepository _attendanceRepository;
-  final GroupRepository _groupRepository;
-  final StudentRepository _studentRepository;
+  final AttendanceRepository _repository;
+  List<AttendanceModel> _attendances = [];
 
-  List<Group> _groups = [];
-  Group? _selectedGroup;
-  DateTime _selectedDate = DateTime.now();
-  List<Student> _students = [];
-  List<Attendance> _existingAttendance = [];
-  Set<int> _absentStudentIds = {};
-
-  AttendanceBloc(
-    this._attendanceRepository,
-    this._groupRepository,
-    this._studentRepository,
-  ) : super(const AttendanceState.initial()) {
-    on<AttendanceLoadGroups>(_onLoadGroups);
-    on<AttendanceSelectGroup>(_onSelectGroup);
-    on<AttendanceSelectDate>(_onSelectDate);
-    on<AttendanceLoadForGroupAndDate>(_onLoadForGroupAndDate);
-    on<AttendanceToggleStudent>(_onToggleStudent);
-    on<AttendanceSave>(_onSave);
+  AttendanceBloc(this._repository) : super(AttendanceInitial()) {
+    on<AttendanceLoadByGroupAndDate>(_onLoadByGroupAndDate);
+    on<AttendanceLoadByGroupAndMonth>(_onLoadByGroupAndMonth);
+    on<AttendanceLoadByStudentAndMonth>(_onLoadByStudentAndMonth);
+    on<AttendanceCreate>(_onCreate);
     on<AttendanceUpdateStatus>(_onUpdateStatus);
   }
 
-  Future<void> _onLoadGroups(
-    AttendanceLoadGroups event,
+  Future<void> _onLoadByGroupAndDate(
+    AttendanceLoadByGroupAndDate event,
     Emitter<AttendanceState> emit,
   ) async {
-    emit(const AttendanceState.loading());
-    try {
-      _groups = await _groupRepository.getAll();
-      emit(AttendanceState.groupsLoaded(groups: _groups));
-    } catch (e) {
-      emit(AttendanceState.error(message: e.toString()));
-    }
-  }
-
-  Future<void> _onSelectGroup(
-    AttendanceSelectGroup event,
-    Emitter<AttendanceState> emit,
-  ) async {
-    _selectedGroup = event.group;
-    add(AttendanceLoadForGroupAndDate(
-      groupId: event.group.id,
-      date: _selectedDate,
-    ));
-  }
-
-  Future<void> _onSelectDate(
-    AttendanceSelectDate event,
-    Emitter<AttendanceState> emit,
-  ) async {
-    _selectedDate = event.date;
-    if (_selectedGroup != null) {
-      add(AttendanceLoadForGroupAndDate(
-        groupId: _selectedGroup!.id,
-        date: event.date,
-      ));
-    }
-  }
-
-  Future<void> _onLoadForGroupAndDate(
-    AttendanceLoadForGroupAndDate event,
-    Emitter<AttendanceState> emit,
-  ) async {
-    emit(const AttendanceState.loading());
-    try {
-      final results = await Future.wait([
-        _studentRepository.getByGroupId(event.groupId),
-        _attendanceRepository.getByGroupAndDate(event.groupId, event.date),
-      ]);
-
-      _students = results[0] as List<Student>;
-      _existingAttendance = results[1] as List<Attendance>;
-
-      // Set absent students from existing attendance
-      _absentStudentIds = _existingAttendance
-          .where((a) => a.status == AttendanceStatus.ABSENT)
-          .map((a) => a.studentId)
-          .toSet();
-
-      emit(AttendanceState.ready(
-        groups: _groups,
-        selectedGroup: _selectedGroup!,
-        selectedDate: _selectedDate,
-        students: _students,
-        existingAttendance: _existingAttendance,
-        absentStudentIds: _absentStudentIds,
-        hasExistingAttendance: _existingAttendance.isNotEmpty,
-      ));
-    } catch (e) {
-      emit(AttendanceState.error(message: e.toString()));
-    }
-  }
-
-  void _onToggleStudent(
-    AttendanceToggleStudent event,
-    Emitter<AttendanceState> emit,
-  ) {
-    if (_absentStudentIds.contains(event.studentId)) {
-      _absentStudentIds = Set.from(_absentStudentIds)..remove(event.studentId);
+    emit(AttendanceLoading());
+    final (attendances, failure) =
+        await _repository.getByGroupAndDate(event.groupId, event.date);
+    if (failure != null) {
+      emit(AttendanceError(failure.message));
     } else {
-      _absentStudentIds = Set.from(_absentStudentIds)..add(event.studentId);
+      _attendances = attendances ?? [];
+      emit(AttendanceLoaded(_attendances));
     }
-
-    emit(AttendanceState.ready(
-      groups: _groups,
-      selectedGroup: _selectedGroup!,
-      selectedDate: _selectedDate,
-      students: _students,
-      existingAttendance: _existingAttendance,
-      absentStudentIds: _absentStudentIds,
-      hasExistingAttendance: _existingAttendance.isNotEmpty,
-    ));
   }
 
-  Future<void> _onSave(
-    AttendanceSave event,
+  Future<void> _onLoadByGroupAndMonth(
+    AttendanceLoadByGroupAndMonth event,
     Emitter<AttendanceState> emit,
   ) async {
-    emit(const AttendanceState.saving());
-    try {
-      await _attendanceRepository.createForGroup(AttendanceRequest(
-        groupId: _selectedGroup!.id,
-        date: _selectedDate,
-        absentStudentIds: _absentStudentIds.toList(),
-      ));
-      emit(const AttendanceState.saved());
-      
-      // Reload data
-      add(AttendanceLoadForGroupAndDate(
-        groupId: _selectedGroup!.id,
-        date: _selectedDate,
-      ));
-    } catch (e) {
-      emit(AttendanceState.error(message: e.toString()));
+    emit(AttendanceLoading());
+    final (attendances, failure) = await _repository.getByGroupIdAndMonth(
+        event.groupId, event.year, event.month);
+    if (failure != null) {
+      emit(AttendanceError(failure.message));
+    } else {
+      _attendances = attendances ?? [];
+      emit(AttendanceLoaded(_attendances));
+    }
+  }
+
+  Future<void> _onLoadByStudentAndMonth(
+    AttendanceLoadByStudentAndMonth event,
+    Emitter<AttendanceState> emit,
+  ) async {
+    emit(AttendanceLoading());
+    final (attendances, failure) = await _repository.getByStudentIdAndMonth(
+        event.studentId, event.year, event.month);
+    if (failure != null) {
+      emit(AttendanceError(failure.message));
+    } else {
+      _attendances = attendances ?? [];
+      emit(AttendanceLoaded(_attendances));
+    }
+  }
+
+  Future<void> _onCreate(
+    AttendanceCreate event,
+    Emitter<AttendanceState> emit,
+  ) async {
+    emit(AttendanceLoading());
+    final (attendances, failure) = await _repository.createForGroup(
+      AttendanceRequest(
+        groupId: event.groupId,
+        date: event.date,
+        absentStudentIds: event.absentStudentIds,
+      ),
+    );
+    if (failure != null) {
+      emit(AttendanceError(failure.message));
+      emit(AttendanceLoaded(_attendances));
+    } else {
+      _attendances = attendances ?? [];
+      emit(const AttendanceActionSuccess('Attendance recorded successfully'));
+      emit(AttendanceLoaded(_attendances));
     }
   }
 
@@ -197,16 +200,18 @@ class AttendanceBloc extends Bloc<AttendanceEvent, AttendanceState> {
     AttendanceUpdateStatus event,
     Emitter<AttendanceState> emit,
   ) async {
-    try {
-      await _attendanceRepository.updateStatus(event.attendanceId, event.status);
-      
-      // Reload data
-      add(AttendanceLoadForGroupAndDate(
-        groupId: _selectedGroup!.id,
-        date: _selectedDate,
-      ));
-    } catch (e) {
-      emit(AttendanceState.error(message: e.toString()));
+    final (attendance, failure) = await _repository.update(
+      event.id,
+      AttendanceUpdateRequest(status: event.status),
+    );
+    if (failure != null) {
+      emit(AttendanceError(failure.message));
+      emit(AttendanceLoaded(_attendances));
+    } else {
+      _attendances = _attendances
+          .map((a) => a.id == event.id ? attendance! : a)
+          .toList();
+      emit(AttendanceLoaded(_attendances));
     }
   }
 }

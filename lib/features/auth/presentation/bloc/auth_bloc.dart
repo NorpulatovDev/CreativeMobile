@@ -1,39 +1,73 @@
+import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:injectable/injectable.dart';
-import '../../data/repositories/auth_repository.dart';
 
-part 'auth_bloc.freezed.dart';
+import '../../data/models/user_model.dart';
+import '../../data/repositories/auth_repository_impl.dart';
 
 // Events
-@freezed
-class AuthEvent with _$AuthEvent {
-  const factory AuthEvent.checkStatus() = AuthCheckStatus;
-  const factory AuthEvent.login({
-    required String username,
-    required String password,
-  }) = AuthLogin;
-  const factory AuthEvent.logout() = AuthLogout;
+abstract class AuthEvent extends Equatable {
+  const AuthEvent();
+
+  @override
+  List<Object?> get props => [];
 }
+
+class AuthCheckStatus extends AuthEvent {}
+
+class AuthLoginRequested extends AuthEvent {
+  final String username;
+  final String password;
+
+  const AuthLoginRequested({
+    required this.username,
+    required this.password,
+  });
+
+  @override
+  List<Object?> get props => [username, password];
+}
+
+class AuthLogout extends AuthEvent {}
 
 // States
-@freezed
-class AuthState with _$AuthState {
-  const factory AuthState.initial() = AuthInitial;
-  const factory AuthState.loading() = AuthLoading;
-  const factory AuthState.authenticated({required String username}) = AuthAuthenticated;
-  const factory AuthState.unauthenticated() = AuthUnauthenticated;
-  const factory AuthState.error({required String message}) = AuthError;
+abstract class AuthState extends Equatable {
+  const AuthState();
+
+  @override
+  List<Object?> get props => [];
 }
 
-// Bloc
-@injectable
+class AuthInitial extends AuthState {}
+
+class AuthLoading extends AuthState {}
+
+class AuthAuthenticated extends AuthState {
+  final UserModel user;
+
+  const AuthAuthenticated(this.user);
+
+  @override
+  List<Object?> get props => [user];
+}
+
+class AuthUnauthenticated extends AuthState {}
+
+class AuthError extends AuthState {
+  final String message;
+
+  const AuthError(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+// BLoC
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _authRepository;
 
-  AuthBloc(this._authRepository) : super(const AuthState.initial()) {
+  AuthBloc(this._authRepository) : super(AuthInitial()) {
     on<AuthCheckStatus>(_onCheckStatus);
-    on<AuthLogin>(_onLogin);
+    on<AuthLoginRequested>(_onLoginRequested);
     on<AuthLogout>(_onLogout);
   }
 
@@ -41,25 +75,36 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthCheckStatus event,
     Emitter<AuthState> emit,
   ) async {
-    emit(const AuthState.loading());
-    final isLoggedIn = await _authRepository.isLoggedIn();
-    if (isLoggedIn) {
-      emit(const AuthState.authenticated(username: 'User'));
+    emit(AuthLoading());
+
+    final user = await _authRepository.getCurrentUser();
+
+    if (user != null) {
+      emit(AuthAuthenticated(user));
     } else {
-      emit(const AuthState.unauthenticated());
+      emit(AuthUnauthenticated());
     }
   }
 
-  Future<void> _onLogin(
-    AuthLogin event,
+  Future<void> _onLoginRequested(
+    AuthLoginRequested event,
     Emitter<AuthState> emit,
   ) async {
-    emit(const AuthState.loading());
-    try {
-      final response = await _authRepository.login(event.username, event.password);
-      emit(AuthState.authenticated(username: response.username));
-    } catch (e) {
-      emit(AuthState.error(message: _mapError(e)));
+    emit(AuthLoading());
+
+    final (user, failure) = await _authRepository.login(
+      event.username,
+      event.password,
+    );
+
+    if (failure != null) {
+      emit(AuthError(failure.message));
+      emit(AuthUnauthenticated());
+    } else if (user != null) {
+      emit(AuthAuthenticated(user));
+    } else {
+      emit(const AuthError('Unknown error occurred'));
+      emit(AuthUnauthenticated());
     }
   }
 
@@ -67,17 +112,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthLogout event,
     Emitter<AuthState> emit,
   ) async {
+    emit(AuthLoading());
     await _authRepository.logout();
-    emit(const AuthState.unauthenticated());
-  }
-
-  String _mapError(dynamic error) {
-    if (error.toString().contains('401')) {
-      return 'Invalid username or password';
-    }
-    if (error.toString().contains('SocketException')) {
-      return 'No internet connection';
-    }
-    return 'Something went wrong. Please try again.';
+    emit(AuthUnauthenticated());
   }
 }

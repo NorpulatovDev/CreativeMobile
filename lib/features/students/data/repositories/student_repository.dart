@@ -1,49 +1,82 @@
+import 'package:dio/dio.dart';
+
+import '../../../../core/error/failures.dart';
 import '../datasources/student_remote_datasource.dart';
-import '../models/student.dart';
-import '../models/student_group.dart';
+import '../models/student_model.dart';
 
-class StudentRepository {
-  final StudentRemoteDataSource dataSource;
+abstract class StudentRepository {
+  Future<(List<StudentModel>?, Failure?)> getAll();
+  Future<(List<StudentModel>?, Failure?)> getByGroupId(int groupId);
+  Future<(StudentModel?, Failure?)> getById(int id);
+  Future<(StudentModel?, Failure?)> create(StudentRequest request);
+  Future<(StudentModel?, Failure?)> update(int id, StudentRequest request);
+}
 
-  StudentRepository(this.dataSource);
+class StudentRepositoryImpl implements StudentRepository {
+  final StudentRemoteDataSource _remoteDataSource;
 
-  Future<List<Student>> getAll() {
-    return dataSource.getAll();
+  StudentRepositoryImpl(this._remoteDataSource);
+
+  @override
+  Future<(List<StudentModel>?, Failure?)> getAll() async {
+    try {
+      final students = await _remoteDataSource.getAll();
+      return (students, null);
+    } on DioException catch (e) {
+      return (null, ServerFailure(e.message ?? 'Failed to load students'));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
-  Future<Student> getById(int id) {
-    return dataSource.getById(id);
+  @override
+  Future<(List<StudentModel>?, Failure?)> getByGroupId(int groupId) async {
+    try {
+      final students = await _remoteDataSource.getByGroupId(groupId);
+      return (students, null);
+    } on DioException catch (e) {
+      return (null, ServerFailure(e.message ?? 'Failed to load students'));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
-  Future<List<Student>> getByGroupId(int groupId) {
-    return dataSource.getByGroupId(groupId);
+  @override
+  Future<(StudentModel?, Failure?)> getById(int id) async {
+    try {
+      final student = await _remoteDataSource.getById(id);
+      return (student, null);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return (null, const ServerFailure('Student not found'));
+      }
+      return (null, ServerFailure(e.message ?? 'Failed to load student'));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
-  Future<Student> create(StudentRequest request) {
-    return dataSource.create(request);
+  @override
+  Future<(StudentModel?, Failure?)> create(StudentRequest request) async {
+    try {
+      final student = await _remoteDataSource.create(request);
+      return (student, null);
+    } on DioException catch (e) {
+      return (null, ServerFailure(e.message ?? 'Failed to create student'));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
-  Future<Student> update(int id, StudentRequest request) {
-    return dataSource.update(id, request);
-  }
-
-  Future<StudentGroup> addToGroup(StudentGroupRequest request) {
-    return dataSource.addToGroup(request);
-  }
-
-  Future<void> removeFromGroup(int studentId, int groupId) {
-    return dataSource.removeFromGroup(studentId, groupId);
-  }
-
-  Future<List<StudentGroup>> getStudentGroups(int studentId) {
-    return dataSource.getStudentGroups(studentId);
-  }
-
-  Future<List<StudentGroup>> getStudentActiveGroups(int studentId) {
-    return dataSource.getStudentActiveGroups(studentId);
-  }
-
-  Future<List<StudentGroup>> getGroupStudents(int groupId) {
-    return dataSource.getGroupStudents(groupId);
+  @override
+  Future<(StudentModel?, Failure?)> update(int id, StudentRequest request) async {
+    try {
+      final student = await _remoteDataSource.update(id, request);
+      return (student, null);
+    } on DioException catch (e) {
+      return (null, ServerFailure(e.message ?? 'Failed to update student'));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 }

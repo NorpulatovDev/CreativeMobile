@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../data/models/student.dart';
-import '../../data/models/student_group.dart';
-import '../bloc/student_bloc.dart';
-import '../bloc/student_event.dart';
-import '../bloc/student_state.dart';
-import '../widgets/add_group_dialog.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+
+import '../../../../core/di/injection.dart';
+import '../../../../core/router/routes.dart';
+import '../../../attendance/data/models/attendance_model.dart';
+import '../../../attendance/data/repositories/attendance_repository.dart';
+import '../../../enrollments/data/models/enrollment_model.dart';
+import '../../../enrollments/data/repositories/enrollment_repository.dart';
+import '../../../groups/data/models/group_model.dart';
+import '../../../groups/data/repositories/group_repository.dart';
+import '../../../payments/data/models/payment_model.dart';
+import '../../../payments/data/repositories/payment_repository.dart';
+import '../../../payments/presentation/pages/payments_page.dart';
+import '../../data/models/student_model.dart';
+import '../../data/repositories/student_repository.dart';
 
 class StudentDetailPage extends StatefulWidget {
   final int studentId;
@@ -16,310 +25,896 @@ class StudentDetailPage extends StatefulWidget {
   State<StudentDetailPage> createState() => _StudentDetailPageState();
 }
 
-class _StudentDetailPageState extends State<StudentDetailPage> {
+class _StudentDetailPageState extends State<StudentDetailPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  StudentModel? _student;
+  List<EnrollmentModel> _enrollments = [];
+  List<PaymentModel> _payments = [];
+  List<AttendanceModel> _attendances = [];
+  List<GroupModel> _allGroups = [];
+  bool _loading = true;
+
+  // For attendance calendar
+  DateTime _selectedMonth = DateTime.now();
+  DateTime? _selectedDay;
+  bool _loadingAttendance = false;
+  int? _selectedGroupId; // null means all groups
+
   @override
   void initState() {
     super.initState();
-    context.read<StudentBloc>().add(LoadStudentDetail(widget.studentId));
+    _tabController = TabController(length: 3, vsync: this);
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final (student, _) =
+        await getIt<StudentRepository>().getById(widget.studentId);
+    final (enrollments, _) =
+        await getIt<EnrollmentRepository>().getStudentGroups(widget.studentId);
+    final (payments, _) =
+        await getIt<PaymentRepository>().getByStudentId(widget.studentId);
+    final (groups, _) = await getIt<GroupRepository>().getAll();
+
+    // Load attendance for selected month
+    final (attendances, _) = await getIt<AttendanceRepository>()
+        .getByStudentIdAndMonth(
+            widget.studentId, _selectedMonth.year, _selectedMonth.month);
+
+    if (mounted) {
+      setState(() {
+        _student = student;
+        _enrollments = enrollments ?? [];
+        _payments = payments ?? [];
+        _attendances = attendances ?? [];
+        _allGroups = groups ?? [];
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadAttendanceForMonth(DateTime month, {int? groupId}) async {
+    setState(() {
+      _selectedMonth = month;
+      _loadingAttendance = true;
+      if (groupId != null || groupId != _selectedGroupId) {
+        _selectedGroupId = groupId;
+      }
+    });
+
+    final (attendances, _) = _selectedGroupId != null
+        ? await getIt<AttendanceRepository>().getByStudentIdAndGroupIdAndMonth(
+            widget.studentId, _selectedGroupId!, month.year, month.month)
+        : await getIt<AttendanceRepository>()
+            .getByStudentIdAndMonth(widget.studentId, month.year, month.month);
+
+    if (mounted) {
+      setState(() {
+        _attendances = attendances ?? [];
+        _loadingAttendance = false;
+      });
+    }
+  }
+
+  void _onGroupFilterChanged(int? groupId) {
+    _loadAttendanceForMonth(_selectedMonth, groupId: groupId);
+  }
+
+  Map<DateTime, List<AttendanceModel>> _getAttendanceMap() {
+    final map = <DateTime, List<AttendanceModel>>{};
+    for (final attendance in _attendances) {
+      final key = DateTime(
+        attendance.date.year,
+        attendance.date.month,
+        attendance.date.day,
+      );
+      if (map[key] == null) {
+        map[key] = [];
+      }
+      map[key]!.add(attendance);
+    }
+    return map;
+  }
+
+  List<AttendanceModel> _getAttendanceForDay(DateTime day) {
+    final key = DateTime(day.year, day.month, day.day);
+    return _getAttendanceMap()[key] ?? [];
+  }
+
+  bool _hasAnyAbsence(DateTime day) {
+    final attendances = _getAttendanceForDay(day);
+    if (attendances.isEmpty) return false;
+    return attendances.any((a) => a.status == AttendanceStatus.ABSENT);
+  }
+
+  bool _hasAttendance(DateTime day) {
+    final attendances = _getAttendanceForDay(day);
+    return attendances.isNotEmpty;
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_student == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(child: Text('Student not found')),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Student Details'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              context.read<StudentBloc>().add(LoadStudentDetail(widget.studentId));
-            },
+        title: Text(_student!.fullName),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Groups', icon: Icon(Icons.groups)),
+            Tab(text: 'Payments', icon: Icon(Icons.payment)),
+            Tab(text: 'Attendance', icon: Icon(Icons.fact_check)),
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          _buildStudentInfo(),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildGroupsTab(),
+                _buildPaymentsTab(),
+                _buildAttendanceTab(),
+              ],
+            ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddToGroupDialog(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Add to Group'),
-      ),
-      body: BlocConsumer<StudentBloc, StudentState>(
-        listener: (context, state) {
-          if (state is StudentError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          if (state is StudentOperationSuccess) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: Colors.green,
-              ),
-            );
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          if (_tabController.index == 0) {
+            _showEnrollInGroupDialog();
+          } else if (_tabController.index == 1) {
+            _showAddPaymentDialog();
           }
         },
-        builder: (context, state) {
-          if (state is StudentLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (state is StudentDetailLoaded) {
-            return _buildContent(context, state.student, state.enrollments);
-          }
-          return const SizedBox();
-        },
+        child: const Icon(Icons.add),
       ),
     );
   }
 
-  Widget _buildContent(
-    BuildContext context,
-    Student student,
-    List<StudentGroup> enrollments,
-  ) {
-    final activeEnrollments = enrollments.where((e) => e.active).toList();
-    final pastEnrollments = enrollments.where((e) => !e.active).toList();
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Student Info Card
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 40,
-                    child: Text(
-                      student.fullName[0].toUpperCase(),
-                      style: const TextStyle(fontSize: 32),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    student.fullName,
-                    style: const TextStyle(
+  Widget _buildStudentInfo() {
+    return Card(
+      margin: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primaryContainer,
+                  child: Text(
+                    _student!.fullName[0].toUpperCase(),
+                    style: TextStyle(
                       fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  if (student.smsLinked)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 4,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _student!.fullName,
+                        style: Theme.of(context).textTheme.titleLarge,
                       ),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
+                      const SizedBox(height: 4),
+                      Row(
                         children: [
-                          Icon(Icons.check_circle, color: Colors.green, size: 16),
-                          SizedBox(width: 4),
-                          Text(
-                            'SMS Linked',
-                            style: TextStyle(color: Colors.green),
+                          Icon(
+                            Icons.family_restroom,
+                            size: 16,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              _student!.parentName,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 8),
-                  _InfoRow(icon: Icons.person, label: 'Parent', value: student.parentName),
-                  _InfoRow(icon: Icons.phone, label: 'Phone', value: student.parentPhoneNumber),
-                  _InfoRow(
-                    icon: Icons.payment,
-                    label: 'Total Paid',
-                    value: '\$${student.totalPaid.toStringAsFixed(2)}',
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.phone,
+                            size: 16,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _student!.parentPhoneNumber,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  _InfoRow(
-                    icon: Icons.group,
-                    label: 'Active Groups',
-                    value: '${student.activeGroupsCount}',
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Active Groups
-          Text(
-            'Active Groups (${activeEnrollments.length})',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          if (activeEnrollments.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                  child: Text('Not enrolled in any group'),
                 ),
-              ),
-            )
-          else
-            ...activeEnrollments.map(
-              (e) => _EnrollmentCard(
-                enrollment: e,
-                onRemove: () => _confirmRemove(context, e),
-              ),
+              ],
             ),
-
-          // Past Groups
-          if (pastEnrollments.isNotEmpty) ...[
-            const SizedBox(height: 24),
-            Text(
-              'Past Groups (${pastEnrollments.length})',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...pastEnrollments.map(
-              (e) => _EnrollmentCard(enrollment: e, isPast: true),
+            const Divider(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _InfoColumn(
+                  label: 'Groups',
+                  value: '${_student!.activeGroupsCount}',
+                ),
+                _InfoColumn(
+                  label: 'Total Paid',
+                  value: '${_student!.totalPaid.toStringAsFixed(0)} UZS',
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                _InfoColumn(
+                  label: 'Payments',
+                  value: '${_payments.length}',
+                ),
+              ],
             ),
           ],
+        ),
+      ),
+    );
+  }
 
+  Widget _buildGroupsTab() {
+    final activeEnrollments = _enrollments.where((e) => e.active).toList();
+    if (activeEnrollments.isEmpty) {
+      return const Center(child: Text('Not enrolled in any groups'));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: activeEnrollments.length,
+      itemBuilder: (context, index) {
+        final enrollment = activeEnrollments[index];
+        return Card(
+          child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.groups)),
+            title: Text(enrollment.groupName),
+            subtitle: Text('Teacher: ${enrollment.teacherName}'),
+            trailing: Text(
+              '${enrollment.monthlyFee.toStringAsFixed(0)} UZS',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            onTap: () => context.push('${Routes.groups}/${enrollment.groupId}'),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPaymentsTab() {
+    if (_payments.isEmpty) {
+      return const Center(child: Text('No payments recorded'));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _payments.length,
+      itemBuilder: (context, index) {
+        final payment = _payments[index];
+        return Card(
+          child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.payment)),
+            title: Text(payment.groupName),
+            subtitle: Text('For: ${payment.paidForMonth}'),
+            trailing: Text(
+              '${payment.amount.toStringAsFixed(0)} UZS',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAttendanceTab() {
+    final presentCount =
+        _attendances.where((a) => a.status == AttendanceStatus.PRESENT).length;
+    final absentCount =
+        _attendances.where((a) => a.status == AttendanceStatus.ABSENT).length;
+    final totalRecords = _attendances.length;
+
+    // Get active enrollments for group filter
+    final activeEnrollments = _enrollments.where((e) => e.active).toList();
+
+    return Column(
+      children: [
+        // Group Filter Dropdown
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: DropdownButtonFormField<int?>(
+            value: _selectedGroupId,
+            decoration: InputDecoration(
+              labelText: 'Filter by Group',
+              prefixIcon: const Icon(Icons.filter_list),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            items: [
+              const DropdownMenuItem<int?>(
+                value: null,
+                child: Text('All Groups'),
+              ),
+              ...activeEnrollments.map((enrollment) => DropdownMenuItem<int?>(
+                    value: enrollment.groupId,
+                    child: Text(enrollment.groupName),
+                  )),
+            ],
+            onChanged: _onGroupFilterChanged,
+          ),
+        ),
+
+        // Stats Row
+        if (totalRecords > 0)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    icon: Icons.check_circle,
+                    label: 'Present',
+                    value: '$presentCount',
+                    color: Colors.green,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _StatCard(
+                    icon: Icons.cancel,
+                    label: 'Absent',
+                    value: '$absentCount',
+                    color: Colors.red,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _StatCard(
+                    icon: Icons.percent,
+                    label: 'Rate',
+                    value: totalRecords > 0
+                        ? '${(presentCount / totalRecords * 100).toStringAsFixed(0)}%'
+                        : '0%',
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // Calendar
+        Expanded(
+          child: _loadingAttendance
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      _CustomCalendar(
+                        selectedMonth: _selectedMonth,
+                        selectedDay: _selectedDay,
+                        onMonthChanged: (month) {
+                          _loadAttendanceForMonth(month, groupId: _selectedGroupId);
+                        },
+                        onDaySelected: (day) {
+                          setState(() {
+                            _selectedDay = day;
+                          });
+                        },
+                        hasAttendance: _hasAttendance,
+                        hasAnyAbsence: _hasAnyAbsence,
+                      ),
+                      const SizedBox(height: 16),
+                      if (_selectedDay != null) _buildSelectedDayInfo(),
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSelectedDayInfo() {
+    if (_selectedDay == null) return const SizedBox();
+
+    final attendanceForDay = _getAttendanceForDay(_selectedDay!);
+
+    if (attendanceForDay.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.event_busy,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No attendance records',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                Text(
+                  DateFormat('EEEE, dd MMM yyyy').format(_selectedDay!),
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Text(
+              DateFormat('EEEE, dd MMM yyyy').format(_selectedDay!),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+          ),
+          ...attendanceForDay.map((attendance) {
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: Icon(
+                  attendance.status == AttendanceStatus.PRESENT
+                      ? Icons.check_circle
+                      : Icons.cancel,
+                  color: attendance.status == AttendanceStatus.PRESENT
+                      ? Colors.green
+                      : Colors.red,
+                ),
+                title: Text(attendance.groupName),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: attendance.status == AttendanceStatus.PRESENT
+                        ? Colors.green.withOpacity(0.1)
+                        : Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: attendance.status == AttendanceStatus.PRESENT
+                          ? Colors.green
+                          : Colors.red,
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    attendance.status == AttendanceStatus.PRESENT ? 'Present' : 'Absent',
+                    style: TextStyle(
+                      color: attendance.status == AttendanceStatus.PRESENT
+                          ? Colors.green
+                          : Colors.red,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
           const SizedBox(height: 80),
         ],
       ),
     );
   }
 
-  void _showAddToGroupDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AddToGroupDialog(studentId: widget.studentId),
-    ).then((groupId) {
-      if (groupId != null) {
-        context.read<StudentBloc>().add(
-              AddStudentToGroup(widget.studentId, groupId),
-            );
-      }
-    });
-  }
+  void _showEnrollInGroupDialog() {
+    final enrolledGroupIds = _enrollments
+        .where((e) => e.active)
+        .map((e) => e.groupId)
+        .toSet();
+    final availableGroups =
+        _allGroups.where((g) => !enrolledGroupIds.contains(g.id)).toList();
 
-  void _confirmRemove(BuildContext context, StudentGroup enrollment) {
+    if (availableGroups.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Already enrolled in all groups')),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Remove from Group'),
-        content: Text(
-          'Remove this student from "${enrollment.groupName}"?',
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Enroll in Group'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: availableGroups.length,
+            itemBuilder: (context, index) {
+              final group = availableGroups[index];
+              return ListTile(
+                title: Text(group.name),
+                subtitle: Text('${group.teacherName} • ${group.monthlyFee.toStringAsFixed(0)} UZS'),
+                onTap: () async {
+                  Navigator.pop(dialogContext);
+                  await getIt<EnrollmentRepository>()
+                      .addStudentToGroup(widget.studentId, group.id);
+                  _loadData();
+                },
+              );
+            },
+          ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              context.read<StudentBloc>().add(
-                    RemoveStudentFromGroup(
-                      enrollment.studentId,
-                      enrollment.groupId,
-                    ),
-                  );
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Remove'),
           ),
         ],
       ),
     );
   }
+
+  void _showAddPaymentDialog() {
+    if (_enrollments.where((e) => e.active).isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not enrolled in any groups')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => PaymentFormDialog(
+        preselectedStudentId: widget.studentId,
+      ),
+    ).then((_) => _loadData());
+  }
 }
 
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
+class _CustomCalendar extends StatelessWidget {
+  final DateTime selectedMonth;
+  final DateTime? selectedDay;
+  final Function(DateTime) onMonthChanged;
+  final Function(DateTime) onDaySelected;
+  final bool Function(DateTime) hasAttendance;
+  final bool Function(DateTime) hasAnyAbsence;
 
-  const _InfoRow({
-    required this.icon,
+  const _CustomCalendar({
+    required this.selectedMonth,
+    required this.selectedDay,
+    required this.onMonthChanged,
+    required this.onDaySelected,
+    required this.hasAttendance,
+    required this.hasAnyAbsence,
+  });
+
+  List<DateTime> _getDaysInMonth(DateTime month) {
+    final firstDay = DateTime(month.year, month.month, 1);
+    final lastDay = DateTime(month.year, month.month + 1, 0);
+    final daysInMonth = lastDay.day;
+
+    final startWeekday = firstDay.weekday;
+    final leadingDays = startWeekday - 1;
+
+    final days = <DateTime>[];
+
+    // Add leading days from previous month
+    for (int i = leadingDays; i > 0; i--) {
+      days.add(firstDay.subtract(Duration(days: i)));
+    }
+
+    // Add days of current month
+    for (int i = 1; i <= daysInMonth; i++) {
+      days.add(DateTime(month.year, month.month, i));
+    }
+
+    // Add trailing days to complete the week
+    final remainingDays = 7 - (days.length % 7);
+    if (remainingDays < 7) {
+      for (int i = 1; i <= remainingDays; i++) {
+        days.add(lastDay.add(Duration(days: i)));
+      }
+    }
+
+    return days;
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final days = _getDaysInMonth(selectedMonth);
+    final today = DateTime.now();
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: () {
+                    final prevMonth = DateTime(
+                      selectedMonth.year,
+                      selectedMonth.month - 1,
+                    );
+                    onMonthChanged(prevMonth);
+                  },
+                ),
+                Text(
+                  DateFormat('MMMM yyyy').format(selectedMonth),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: () {
+                    final nextMonth = DateTime(
+                      selectedMonth.year,
+                      selectedMonth.month + 1,
+                    );
+                    onMonthChanged(nextMonth);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Weekday headers
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                  .map((day) => SizedBox(
+                        width: 40,
+                        child: Center(
+                          child: Text(
+                            day,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ),
+                      ))
+                  .toList(),
+            ),
+            const SizedBox(height: 8),
+            // Days grid
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 7,
+                childAspectRatio: 1,
+              ),
+              itemCount: days.length,
+              itemBuilder: (context, index) {
+                final day = days[index];
+                final isCurrentMonth = day.month == selectedMonth.month;
+                final isToday = _isSameDay(day, today);
+                final isSelected = selectedDay != null && _isSameDay(day, selectedDay!);
+                final hasRecord = hasAttendance(day);
+                final isAbsent = hasAnyAbsence(day);
+
+                Color? backgroundColor;
+                Color? textColor;
+                Color? borderColor;
+
+                if (isSelected) {
+                  backgroundColor = Theme.of(context).colorScheme.primary;
+                  textColor = Theme.of(context).colorScheme.onPrimary;
+                } else if (hasRecord && isAbsent) {
+                  backgroundColor = Colors.red.withOpacity(0.2);
+                  textColor = Colors.red;
+                  borderColor = Colors.red;
+                } else if (hasRecord && !isAbsent) {
+                  backgroundColor = Colors.green.withOpacity(0.2);
+                  textColor = Colors.green;
+                  borderColor = Colors.green;
+                } else if (isToday) {
+                  backgroundColor = Theme.of(context).colorScheme.primaryContainer;
+                  textColor = Theme.of(context).colorScheme.onPrimaryContainer;
+                }
+
+                if (!isCurrentMonth && backgroundColor == null) {
+                  textColor = Theme.of(context).colorScheme.outline;
+                }
+
+                return GestureDetector(
+                  onTap: isCurrentMonth ? () => onDaySelected(day) : null,
+                  child: Container(
+                    margin: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: backgroundColor,
+                      shape: BoxShape.circle,
+                      border: borderColor != null
+                          ? Border.all(color: borderColor, width: 2)
+                          : null,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${day.day}',
+                        style: TextStyle(
+                          color: textColor ?? Theme.of(context).colorScheme.onSurface,
+                          fontWeight: isToday || isSelected ? FontWeight.bold : null,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            // Legend
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _LegendItem(
+                  color: Colors.green,
+                  label: 'Present',
+                ),
+                const SizedBox(width: 16),
+                _LegendItem(
+                  color: Colors.red,
+                  label: 'Absent',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+
+  const _LegendItem({
+    required this.color,
     required this.label,
-    required this.value,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: Colors.grey[600]),
-          const SizedBox(width: 12),
-          Text('$label:', style: TextStyle(color: Colors.grey[600])),
-          const SizedBox(width: 8),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
-        ],
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.2),
+            shape: BoxShape.circle,
+            border: Border.all(color: color, width: 2),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
     );
   }
 }
 
-class _EnrollmentCard extends StatelessWidget {
-  final StudentGroup enrollment;
-  final VoidCallback? onRemove;
-  final bool isPast;
+class _InfoColumn extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? color;
 
-  const _EnrollmentCard({
-    required this.enrollment,
-    this.onRemove,
-    this.isPast = false,
+  const _InfoColumn({
+    required this.label,
+    required this.value,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _StatCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      color: isPast ? Colors.grey[100] : null,
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: isPast ? Colors.grey : Colors.blue,
-          child: const Icon(Icons.school, color: Colors.white),
-        ),
-        title: Text(
-          enrollment.groupName,
-          style: TextStyle(
-            fontWeight: FontWeight.w500,
-            color: isPast ? Colors.grey[600] : null,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Column(
           children: [
-            Text('Teacher: ${enrollment.teacherName}'),
-            Text('Fee: \$${enrollment.monthlyFee.toStringAsFixed(2)}/month'),
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 4),
             Text(
-              isPast
-                  ? 'Left: ${enrollment.leftAt ?? "N/A"}'
-                  : 'Enrolled: ${enrollment.enrolledAt}',
-              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+              value,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+            ),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
-        trailing: isPast
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-                onPressed: onRemove,
-              ),
-        isThreeLine: true,
       ),
     );
   }

@@ -1,103 +1,252 @@
+import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../data/models/student_group.dart';
+
+import '../../../../core/di/injection.dart';
+import '../../../enrollments/data/repositories/enrollment_repository.dart';
+import '../../data/models/student_model.dart';
 import '../../data/repositories/student_repository.dart';
-import 'student_event.dart';
-import 'student_state.dart';
 
+// Events
+abstract class StudentEvent extends Equatable {
+  const StudentEvent();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class StudentLoadAll extends StudentEvent {}
+
+class StudentLoadByGroup extends StudentEvent {
+  final int groupId;
+
+  const StudentLoadByGroup(this.groupId);
+
+  @override
+  List<Object?> get props => [groupId];
+}
+
+class StudentCreate extends StudentEvent {
+  final String fullName;
+  final String parentName;
+  final String parentPhoneNumber;
+
+  const StudentCreate({
+    required this.fullName,
+    required this.parentName,
+    required this.parentPhoneNumber,
+  });
+
+  @override
+  List<Object?> get props => [fullName, parentName, parentPhoneNumber];
+}
+
+class StudentCreateWithGroup extends StudentEvent {
+  final String fullName;
+  final String parentName;
+  final String parentPhoneNumber;
+  final int? groupId;
+
+  const StudentCreateWithGroup({
+    required this.fullName,
+    required this.parentName,
+    required this.parentPhoneNumber,
+    this.groupId,
+  });
+
+  @override
+  List<Object?> get props => [fullName, parentName, parentPhoneNumber, groupId];
+}
+
+class StudentUpdate extends StudentEvent {
+  final int id;
+  final String fullName;
+  final String parentName;
+  final String parentPhoneNumber;
+
+  const StudentUpdate({
+    required this.id,
+    required this.fullName,
+    required this.parentName,
+    required this.parentPhoneNumber,
+  });
+
+  @override
+  List<Object?> get props => [id, fullName, parentName, parentPhoneNumber];
+}
+
+// States
+abstract class StudentState extends Equatable {
+  const StudentState();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class StudentInitial extends StudentState {}
+
+class StudentLoading extends StudentState {}
+
+class StudentLoaded extends StudentState {
+  final List<StudentModel> students;
+
+  const StudentLoaded(this.students);
+
+  @override
+  List<Object?> get props => [students];
+}
+
+class StudentError extends StudentState {
+  final String message;
+
+  const StudentError(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+class StudentActionSuccess extends StudentState {
+  final String message;
+
+  const StudentActionSuccess(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+// BLoC
 class StudentBloc extends Bloc<StudentEvent, StudentState> {
-  final StudentRepository repository;
+  final StudentRepository _repository;
+  List<StudentModel> _students = [];
 
-  StudentBloc(this.repository) : super(StudentInitial()) {
-    on<LoadStudents>(_onLoadStudents);
-    on<LoadStudentDetail>(_onLoadStudentDetail);
-    on<CreateStudent>(_onCreateStudent);
-    on<UpdateStudent>(_onUpdateStudent);
-    on<AddStudentToGroup>(_onAddStudentToGroup);
-    on<RemoveStudentFromGroup>(_onRemoveStudentFromGroup);
+  StudentBloc(this._repository) : super(StudentInitial()) {
+    on<StudentLoadAll>(_onLoadAll);
+    on<StudentLoadByGroup>(_onLoadByGroup);
+    on<StudentCreate>(_onCreate);
+    on<StudentCreateWithGroup>(_onCreateWithGroup);
+    on<StudentUpdate>(_onUpdate);
   }
 
-  Future<void> _onLoadStudents(
-    LoadStudents event,
+  Future<void> _onLoadAll(
+    StudentLoadAll event,
     Emitter<StudentState> emit,
   ) async {
     emit(StudentLoading());
-    try {
-      final students = await repository.getAll();
-      emit(StudentsLoaded(students));
-    } catch (e) {
-      emit(StudentError(e.toString()));
+    final (students, failure) = await _repository.getAll();
+    if (failure != null) {
+      emit(StudentError(failure.message));
+    } else {
+      _students = students ?? [];
+      emit(StudentLoaded(_students));
     }
   }
 
-  Future<void> _onLoadStudentDetail(
-    LoadStudentDetail event,
+  Future<void> _onLoadByGroup(
+    StudentLoadByGroup event,
     Emitter<StudentState> emit,
   ) async {
     emit(StudentLoading());
-    try {
-      final student = await repository.getById(event.studentId);
-      final enrollments = await repository.getStudentGroups(event.studentId);
-      emit(StudentDetailLoaded(student, enrollments));
-    } catch (e) {
-      emit(StudentError(e.toString()));
+    final (students, failure) = await _repository.getByGroupId(event.groupId);
+    if (failure != null) {
+      emit(StudentError(failure.message));
+    } else {
+      _students = students ?? [];
+      emit(StudentLoaded(_students));
     }
   }
 
-  Future<void> _onCreateStudent(
-    CreateStudent event,
+  Future<void> _onCreate(
+    StudentCreate event,
     Emitter<StudentState> emit,
   ) async {
     emit(StudentLoading());
-    try {
-      await repository.create(event.request);
-      emit(StudentOperationSuccess('Student created successfully'));
-      add(LoadStudents());
-    } catch (e) {
-      emit(StudentError(e.toString()));
+    final (student, failure) = await _repository.create(
+      StudentRequest(
+        fullName: event.fullName,
+        parentName: event.parentName,
+        parentPhoneNumber: event.parentPhoneNumber,
+      ),
+    );
+    if (failure != null) {
+      emit(StudentError(failure.message));
+      emit(StudentLoaded(_students));
+    } else {
+      _students = [..._students, student!];
+      emit(const StudentActionSuccess('Student created successfully'));
+      emit(StudentLoaded(_students));
     }
   }
 
-  Future<void> _onUpdateStudent(
-    UpdateStudent event,
+  Future<void> _onCreateWithGroup(
+    StudentCreateWithGroup event,
     Emitter<StudentState> emit,
   ) async {
     emit(StudentLoading());
-    try {
-      await repository.update(event.id, event.request);
-      emit(StudentOperationSuccess('Student updated successfully'));
-      add(LoadStudents());
-    } catch (e) {
-      emit(StudentError(e.toString()));
+    final (student, failure) = await _repository.create(
+      StudentRequest(
+        fullName: event.fullName,
+        parentName: event.parentName,
+        parentPhoneNumber: event.parentPhoneNumber,
+      ),
+    );
+    if (failure != null) {
+      emit(StudentError(failure.message));
+      emit(StudentLoaded(_students));
+      return;
     }
-  }
 
-  Future<void> _onAddStudentToGroup(
-    AddStudentToGroup event,
-    Emitter<StudentState> emit,
-  ) async {
-    try {
-      final request = StudentGroupRequest(
-        studentId: event.studentId,
-        groupId: event.groupId,
+    // Enroll in group if specified
+    if (event.groupId != null) {
+      final enrollmentRepo = getIt<EnrollmentRepository>();
+      final (_, enrollFailure) = await enrollmentRepo.addStudentToGroup(
+        student!.id,
+        event.groupId!,
       );
-      await repository.addToGroup(request);
-      emit(StudentOperationSuccess('Student added to group'));
-      add(LoadStudentDetail(event.studentId));
-    } catch (e) {
-      emit(StudentError(e.toString()));
+      if (enrollFailure != null) {
+        // Student created but enrollment failed
+        _students = [..._students, student];
+        emit(StudentActionSuccess(
+            'Student created but enrollment failed: ${enrollFailure.message}'));
+        emit(StudentLoaded(_students));
+        return;
+      }
     }
+
+    // Reload to get updated student with group info
+    final (updatedStudent, _) = await _repository.getById(student!.id);
+    if (updatedStudent != null) {
+      _students = [..._students, updatedStudent];
+    } else {
+      _students = [..._students, student];
+    }
+
+    final message = event.groupId != null
+        ? 'Student created and enrolled successfully'
+        : 'Student created successfully';
+    emit(StudentActionSuccess(message));
+    emit(StudentLoaded(_students));
   }
 
-  Future<void> _onRemoveStudentFromGroup(
-    RemoveStudentFromGroup event,
+  Future<void> _onUpdate(
+    StudentUpdate event,
     Emitter<StudentState> emit,
   ) async {
-    try {
-      await repository.removeFromGroup(event.studentId, event.groupId);
-      emit(StudentOperationSuccess('Student removed from group'));
-      add(LoadStudentDetail(event.studentId));
-    } catch (e) {
-      emit(StudentError(e.toString()));
+    emit(StudentLoading());
+    final (student, failure) = await _repository.update(
+      event.id,
+      StudentRequest(
+        fullName: event.fullName,
+        parentName: event.parentName,
+        parentPhoneNumber: event.parentPhoneNumber,
+      ),
+    );
+    if (failure != null) {
+      emit(StudentError(failure.message));
+      emit(StudentLoaded(_students));
+    } else {
+      _students =
+          _students.map((s) => s.id == event.id ? student! : s).toList();
+      emit(const StudentActionSuccess('Student updated successfully'));
+      emit(StudentLoaded(_students));
     }
   }
 }

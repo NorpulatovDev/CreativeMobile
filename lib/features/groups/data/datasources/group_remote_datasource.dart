@@ -1,65 +1,74 @@
-import 'package:dio/dio.dart';
-import 'package:injectable/injectable.dart';
-import '../../../../core/network/api_constants.dart';
-import '../models/models.dart';
+import '../../../../core/api/api_client.dart';
+import '../models/group_model.dart';
 
 abstract class GroupRemoteDataSource {
-  Future<List<Group>> getAll();
-  Future<List<Group>> getByTeacherId(int teacherId);
-  Future<Group> getById(int id);
-  Future<Group> create(GroupRequest request);
-  Future<Group> update(int id, GroupRequest request);
+  Future<List<GroupModel>> getAll();
+  Future<List<GroupModel>> getAllSortedByTeacher();
+  Future<List<GroupModel>> getByTeacherId(int teacherId);
+  Future<GroupModel> getById(int id);
+  Future<GroupModel> create(GroupRequest request);
+  Future<GroupModel> update(int id, GroupRequest request);
   Future<void> delete(int id);
 }
 
-@LazySingleton(as: GroupRemoteDataSource)
 class GroupRemoteDataSourceImpl implements GroupRemoteDataSource {
-  final Dio _dio;
+  final ApiClient _apiClient;
 
-  GroupRemoteDataSourceImpl(this._dio);
+  GroupRemoteDataSourceImpl(this._apiClient);
 
   @override
-  Future<List<Group>> getAll() async {
-    final response = await _dio.get(ApiConstants.groups);
-    return (response.data as List)
-        .map((json) => Group.fromJson(json))
+  Future<List<GroupModel>> getAll() async {
+    final response = await _apiClient.get<List<dynamic>>('/api/groups');
+    return (response.data ?? [])
+        .map((json) => GroupModel.fromJson(json as Map<String, dynamic>))
         .toList();
   }
 
   @override
-  Future<List<Group>> getByTeacherId(int teacherId) async {
-    final response = await _dio.get('${ApiConstants.groups}/teacher/$teacherId');
-    return (response.data as List)
-        .map((json) => Group.fromJson(json))
+  Future<List<GroupModel>> getAllSortedByTeacher() async {
+    final response =
+        await _apiClient.get<List<dynamic>>('/api/groups/sorted-by-teacher');
+    return (response.data ?? [])
+        .map((json) => GroupModel.fromJson(json as Map<String, dynamic>))
         .toList();
   }
 
   @override
-  Future<Group> getById(int id) async {
-    final response = await _dio.get('${ApiConstants.groups}/$id');
-    return Group.fromJson(response.data);
+  Future<List<GroupModel>> getByTeacherId(int teacherId) async {
+    final response =
+        await _apiClient.get<List<dynamic>>('/api/groups/teacher/$teacherId');
+    return (response.data ?? [])
+        .map((json) => GroupModel.fromJson(json as Map<String, dynamic>))
+        .toList();
   }
 
   @override
-  Future<Group> create(GroupRequest request) async {
-    final response = await _dio.post(
-      ApiConstants.groups,
-      data: request.toJson(),
-    );
-    return Group.fromJson(response.data);
+  Future<GroupModel> getById(int id) async {
+    final response =
+        await _apiClient.get<Map<String, dynamic>>('/api/groups/$id');
+    return GroupModel.fromJson(response.data!);
   }
 
   @override
-  Future<Group> update(int id, GroupRequest request) async {
-    final response = await _dio.put(
-      '${ApiConstants.groups}/$id',
+  Future<GroupModel> create(GroupRequest request) async {
+    final response = await _apiClient.post<Map<String, dynamic>>(
+      '/api/groups',
       data: request.toJson(),
     );
-    return Group.fromJson(response.data);
+    return GroupModel.fromJson(response.data!);
+  }
+
+  @override
+  Future<GroupModel> update(int id, GroupRequest request) async {
+    final response = await _apiClient.put<Map<String, dynamic>>(
+      '/api/groups/$id',
+      data: request.toJson(),
+    );
+    return GroupModel.fromJson(response.data!);
   }
 
   @override
   Future<void> delete(int id) async {
-    await _dio.delete('${ApiConstants.groups}/$id');
+    await _apiClient.delete('/api/groups/$id');
   }
 }

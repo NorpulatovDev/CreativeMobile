@@ -1,58 +1,58 @@
-import 'package:dio/dio.dart';
-import 'package:injectable/injectable.dart';
-import '../../../../core/network/api_constants.dart';
-import '../models/models.dart';
+import '../../../../core/api/api_client.dart';
+import '../models/payment_model.dart';
 
 abstract class PaymentRemoteDataSource {
-  Future<List<Payment>> getAll();
-  Future<List<Payment>> getByStudentId(int studentId);
-  Future<List<Payment>> getByGroupId(int groupId);
-  Future<Payment> getById(int id);
-  Future<Payment> create(PaymentRequest request);
+  Future<List<PaymentModel>> getAll();
+  Future<PaymentModel> getById(int id);
+  Future<List<PaymentModel>> getByStudentId(int studentId);
+  Future<List<PaymentModel>> getByGroupId(int groupId);
+  Future<PaymentModel> create(PaymentRequest request);
 }
 
-@LazySingleton(as: PaymentRemoteDataSource)
 class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
-  final Dio _dio;
+  final ApiClient _apiClient;
 
-  PaymentRemoteDataSourceImpl(this._dio);
+  PaymentRemoteDataSourceImpl(this._apiClient);
 
   @override
-  Future<List<Payment>> getAll() async {
-    final response = await _dio.get(ApiConstants.payments);
-    return (response.data as List)
-        .map((json) => Payment.fromJson(json))
+  Future<List<PaymentModel>> getAll() async {
+    final response = await _apiClient.get<List<dynamic>>('/api/payments');
+    return (response.data ?? [])
+        .map((json) => PaymentModel.fromJson(json as Map<String, dynamic>))
         .toList();
   }
 
   @override
-  Future<List<Payment>> getByStudentId(int studentId) async {
-    final response = await _dio.get('${ApiConstants.payments}/student/$studentId');
-    return (response.data as List)
-        .map((json) => Payment.fromJson(json))
+  Future<PaymentModel> getById(int id) async {
+    final response =
+        await _apiClient.get<Map<String, dynamic>>('/api/payments/$id');
+    return PaymentModel.fromJson(response.data!);
+  }
+
+  @override
+  Future<List<PaymentModel>> getByStudentId(int studentId) async {
+    final response = await _apiClient
+        .get<List<dynamic>>('/api/payments/student/$studentId');
+    return (response.data ?? [])
+        .map((json) => PaymentModel.fromJson(json as Map<String, dynamic>))
         .toList();
   }
 
   @override
-  Future<List<Payment>> getByGroupId(int groupId) async {
-    final response = await _dio.get('${ApiConstants.payments}/group/$groupId');
-    return (response.data as List)
-        .map((json) => Payment.fromJson(json))
+  Future<List<PaymentModel>> getByGroupId(int groupId) async {
+    final response =
+        await _apiClient.get<List<dynamic>>('/api/payments/group/$groupId');
+    return (response.data ?? [])
+        .map((json) => PaymentModel.fromJson(json as Map<String, dynamic>))
         .toList();
   }
 
   @override
-  Future<Payment> getById(int id) async {
-    final response = await _dio.get('${ApiConstants.payments}/$id');
-    return Payment.fromJson(response.data);
-  }
-
-  @override
-  Future<Payment> create(PaymentRequest request) async {
-    final response = await _dio.post(
-      ApiConstants.payments,
+  Future<PaymentModel> create(PaymentRequest request) async {
+    final response = await _apiClient.post<Map<String, dynamic>>(
+      '/api/payments',
       data: request.toJson(),
     );
-    return Payment.fromJson(response.data);
+    return PaymentModel.fromJson(response.data!);
   }
 }
