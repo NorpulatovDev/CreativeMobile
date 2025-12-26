@@ -1,13 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'core/api/api_client.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
+import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Set system UI overlay style
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: AppColors.surfaceLight,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+  );
+  
   await configureDependencies();
+  
+  // Set up logout callback for token expiration handling
+  final authBloc = getIt<AuthBloc>();
+  ApiClient.setLogoutCallback(() async {
+    authBloc.add(AuthLogout());
+  });
+  
   runApp(const MyApp());
 }
 
@@ -19,29 +40,9 @@ class MyApp extends StatelessWidget {
     return BlocProvider.value(
       value: getIt<AuthBloc>(),
       child: MaterialApp.router(
-        title: 'Creative Learning Center',
+        title: 'Creative O\'quv Markazi',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF6366F1),
-            brightness: Brightness.light,
-          ),
-          useMaterial3: true,
-          inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            filled: true,
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
+        theme: AppTheme.lightTheme,
         routerConfig: getIt<AppRouter>().router,
       ),
     );

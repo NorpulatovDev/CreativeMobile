@@ -2,15 +2,24 @@ import 'package:dio/dio.dart';
 
 import '../storage/token_storage.dart';
 
+// Callback type for handling logout
+typedef LogoutCallback = Future<void> Function();
+
 class ApiClient {
   final Dio _dio;
   final TokenStorage _tokenStorage;
+  static LogoutCallback? _onLogout;
+
+  // Set the logout callback (called from main.dart or dependency injection)
+  static void setLogoutCallback(LogoutCallback callback) {
+    _onLogout = callback;
+  }
 
   ApiClient(this._tokenStorage)
       : _dio = Dio(BaseOptions(
           baseUrl: const String.fromEnvironment(
             'API_URL',
-            defaultValue: 'http://localhost:8080',
+            defaultValue: 'https://creativelearningcenter-production.up.railway.app/',
           ),
           connectTimeout: const Duration(seconds: 30),
           receiveTimeout: const Duration(seconds: 30),
@@ -86,13 +95,19 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 401) {
+    if (err.response?.statusCode == 401 || err.response?.statusCode == 403) {
+      // Token expired or invalid - clear token and trigger logout
       await _tokenStorage.deleteToken();
+      
+      // Trigger logout callback to update AuthBloc state
+      if (ApiClient._onLogout != null) {
+        await ApiClient._onLogout!();
+      }
     }
     handler.next(err);
   }
 
   bool _isPublicEndpoint(String path) {
-    return path.startsWith('/auth/');
+    return path.startsWith('/auth/') || path.startsWith('auth/');
   }
 }
