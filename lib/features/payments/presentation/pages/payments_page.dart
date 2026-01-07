@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -8,6 +9,7 @@ import '../../../enrollments/data/models/enrollment_model.dart';
 import '../../../enrollments/data/repositories/enrollment_repository.dart';
 import '../../../groups/data/models/group_model.dart';
 import '../../../groups/data/repositories/group_repository.dart';
+import '../../../students/data/repositories/student_repository.dart';
 import '../../data/models/payment_model.dart';
 import '../bloc/payment_bloc.dart';
 
@@ -359,6 +361,55 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
     return '${monthNames[int.parse(parts[1])]} ${parts[0]}';
   }
 
+  Future<void> _sendPaymentSMS(String phoneNumber, String studentName, String groupName, String amount, String month) async {
+    final monthFormatted = _formatMonth(month);
+    final message = Uri.encodeComponent(
+      "Assalomu alaykum! ${studentName}ning $monthFormatted oyi uchun $amount so‘m to‘lovi qabul qilindi. Rahmat!",
+    );
+    
+    final smsUri = Uri.parse('sms:$phoneNumber?body=$message');
+    
+    try {
+      if (await canLaunchUrl(smsUri)) {
+        await launchUrl(smsUri);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text('SMS yuborishda xatolik yuz berdi')),
+                ],
+              ),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(child: Text('SMS yuborishda xatolik: $e')),
+              ],
+            ),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -469,11 +520,76 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
     );
   }
 
-  void _submit() {
+  void _submit() async {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _submitting = true);
-      context.read<PaymentBloc>().add(PaymentCreate(studentId: _selectedStudentId!, groupId: _selectedGroupId!, amount: double.parse(_amountController.text.trim()), paidForMonth: _selectedMonth));
-      Navigator.pop(context);
+      
+      try {
+        // Get student data to retrieve parent phone number
+        final (student, error) = await getIt<StudentRepository>().getById(_selectedStudentId!);
+        
+        if (student == null || error != null) {
+          if (mounted) {
+            setState(() => _submitting = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.white),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text('O\'quvchi ma\'lumotlarini olishda xatolik')),
+                  ],
+                ),
+                backgroundColor: AppColors.error,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            );
+          }
+          return;
+        }
+        
+        final selectedGroup = _groups.firstWhere((g) => g.id == _selectedGroupId);
+        final amount = _amountController.text.trim();
+        
+        // Create payment
+        context.read<PaymentBloc>().add(PaymentCreate(
+          studentId: _selectedStudentId!,
+          groupId: _selectedGroupId!,
+          amount: double.parse(amount),
+          paidForMonth: _selectedMonth,
+        ));
+        
+        // Close dialog
+        Navigator.pop(context);
+        
+        // Send SMS with parent phone number from student data
+        await _sendPaymentSMS(
+          student.parentPhoneNumber,
+          student.fullName,
+          selectedGroup.name,
+          amount,
+          _selectedMonth,
+        );
+      } catch (e) {
+        if (mounted) {
+          setState(() => _submitting = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text('Xatolik yuz berdi: $e')),
+                ],
+              ),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        }
+      }
     }
   }
 }

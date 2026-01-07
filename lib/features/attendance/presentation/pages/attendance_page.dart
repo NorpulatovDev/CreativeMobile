@@ -376,7 +376,7 @@ class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
     final today = DateTime.now();
     final dateStr = DateFormat('dd.MM.yyyy').format(today);
     final message =
-        'Hurmatli ${student.parentName}, farzandingiz ${student.fullName} bugun ($dateStr) "${widget.groupName}" guruhidagi darsga kelmadi.';
+        'Hurmatli ota-ona, ${student.fullName} bugun ($dateStr) darsga kelmadi. Iltimos, sababini ma’lum qilishingizni so‘raymiz.';
 
     final phone = student.parentPhoneNumber.replaceAll('+', '');
     final uri = Uri.parse('sms:+$phone?body=${Uri.encodeComponent(message)}');
