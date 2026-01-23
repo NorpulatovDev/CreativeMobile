@@ -7,6 +7,7 @@ abstract class StudentRemoteDataSource {
   Future<StudentModel> getById(int id);
   Future<StudentModel> create(StudentRequest request);
   Future<StudentModel> update(int id, StudentRequest request);
+  Future<void> delete(int id);
 }
 
 class StudentRemoteDataSourceImpl implements StudentRemoteDataSource {
@@ -54,5 +55,10 @@ class StudentRemoteDataSourceImpl implements StudentRemoteDataSource {
       data: request.toJson(),
     );
     return StudentModel.fromJson(response.data!);
+  }
+
+  @override
+  Future<void> delete(int id) async {
+    await _apiClient.delete('/api/students/$id');
   }
 }

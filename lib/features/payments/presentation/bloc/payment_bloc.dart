@@ -49,6 +49,34 @@ class PaymentCreate extends PaymentEvent {
   List<Object?> get props => [studentId, groupId, amount, paidForMonth];
 }
 
+class PaymentUpdate extends PaymentEvent {
+  final int id;
+  final int studentId;
+  final int groupId;
+  final double amount;
+  final String paidForMonth;
+
+  const PaymentUpdate({
+    required this.id,
+    required this.studentId,
+    required this.groupId,
+    required this.amount,
+    required this.paidForMonth,
+  });
+
+  @override
+  List<Object?> get props => [id, studentId, groupId, amount, paidForMonth];
+}
+
+class PaymentDelete extends PaymentEvent {
+  final int id;
+
+  const PaymentDelete(this.id);
+
+  @override
+  List<Object?> get props => [id];
+}
+
 // States
 abstract class PaymentState extends Equatable {
   const PaymentState();
@@ -98,6 +126,8 @@ class PaymentBloc extends Bloc<PaymentEvent, PaymentState> {
     on<PaymentLoadByStudent>(_onLoadByStudent);
     on<PaymentLoadByGroup>(_onLoadByGroup);
     on<PaymentCreate>(_onCreate);
+    on<PaymentUpdate>(_onUpdate);
+    on<PaymentDelete>(_onDelete);
   }
 
   Future<void> _onLoadAll(
@@ -160,7 +190,47 @@ class PaymentBloc extends Bloc<PaymentEvent, PaymentState> {
       emit(PaymentLoaded(_payments));
     } else {
       _payments = [payment!, ..._payments];
-      emit(const PaymentActionSuccess('Payment recorded successfully'));
+      emit(const PaymentActionSuccess('To\'lov muvaffaqiyatli qo\'shildi'));
+      emit(PaymentLoaded(_payments));
+    }
+  }
+
+  Future<void> _onUpdate(
+    PaymentUpdate event,
+    Emitter<PaymentState> emit,
+  ) async {
+    emit(PaymentLoading());
+    final (payment, failure) = await _repository.update(
+      event.id,
+      PaymentRequest(
+        studentId: event.studentId,
+        groupId: event.groupId,
+        amount: event.amount,
+        paidForMonth: event.paidForMonth,
+      ),
+    );
+    if (failure != null) {
+      emit(PaymentError(failure.message));
+      emit(PaymentLoaded(_payments));
+    } else {
+      _payments = _payments.map((p) => p.id == event.id ? payment! : p).toList();
+      emit(const PaymentActionSuccess('To\'lov muvaffaqiyatli yangilandi'));
+      emit(PaymentLoaded(_payments));
+    }
+  }
+
+  Future<void> _onDelete(
+    PaymentDelete event,
+    Emitter<PaymentState> emit,
+  ) async {
+    emit(PaymentLoading());
+    final failure = await _repository.delete(event.id);
+    if (failure != null) {
+      emit(PaymentError(failure.message));
+      emit(PaymentLoaded(_payments));
+    } else {
+      _payments = _payments.where((p) => p.id != event.id).toList();
+      emit(const PaymentActionSuccess('To\'lov muvaffaqiyatli o\'chirildi'));
       emit(PaymentLoaded(_payments));
     }
   }

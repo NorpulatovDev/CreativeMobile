@@ -263,7 +263,10 @@ class _StudentsViewState extends State<StudentsView> {
                     delegate: SliverChildBuilderDelegate(
                       (context, index) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: _StudentCard(student: filteredStudents[index]),
+                        child: _StudentCard(
+                          student: filteredStudents[index],
+                          onDelete: () => _showDeleteDialog(context, filteredStudents[index]),
+                        ),
                       ),
                       childCount: filteredStudents.length,
                     ),
@@ -299,11 +302,91 @@ class _StudentsViewState extends State<StudentsView> {
       ),
     );
   }
+
+  void _showDeleteDialog(BuildContext context, StudentModel student) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.errorLight,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.delete_outline_rounded,
+                  size: 32,
+                  color: AppColors.error,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'O\'quvchini o\'chirish',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '${student.fullName}ni o\'chirishni xohlaysizmi? Barcha guruhlar, to\'lovlar va davomat yozuvlari ham o\'chiriladi.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppColors.neutral500,
+                    ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: AppColors.neutral300),
+                      ),
+                      child: const Text('Bekor qilish'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        context.read<StudentBloc>().add(StudentDelete(student.id));
+                        Navigator.pop(dialogContext);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.error,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('O\'chirish'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _StudentCard extends StatelessWidget {
   final StudentModel student;
-  const _StudentCard({required this.student});
+  final VoidCallback onDelete;
+  
+  const _StudentCard({
+    required this.student,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -417,7 +500,11 @@ class _StudentCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     onSelected: (value) {
-                      if (value == 'edit') _showEditDialog(context);
+                      if (value == 'edit') {
+                        _showEditDialog(context);
+                      } else if (value == 'delete') {
+                        onDelete();
+                      }
                     },
                     itemBuilder: (context) => [
                       PopupMenuItem(
@@ -431,6 +518,23 @@ class _StudentCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 12),
                             const Text('Tahrirlash'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.delete_rounded,
+                              size: 20,
+                              color: AppColors.error,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'O\'chirish',
+                              style: TextStyle(color: AppColors.error),
+                            ),
                           ],
                         ),
                       ),

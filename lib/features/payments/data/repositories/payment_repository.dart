@@ -9,6 +9,8 @@ abstract class PaymentRepository {
   Future<(List<PaymentModel>?, Failure?)> getByStudentId(int studentId);
   Future<(List<PaymentModel>?, Failure?)> getByGroupId(int groupId);
   Future<(PaymentModel?, Failure?)> create(PaymentRequest request);
+  Future<(PaymentModel?, Failure?)> update(int id, PaymentRequest request);
+  Future<Failure?> delete(int id);
 }
 
 class PaymentRepositoryImpl implements PaymentRepository {
@@ -62,6 +64,31 @@ class PaymentRepositoryImpl implements PaymentRepository {
       return (null, ServerFailure(message));
     } catch (e) {
       return (null, UnknownFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<(PaymentModel?, Failure?)> update(int id, PaymentRequest request) async {
+    try {
+      final payment = await _remoteDataSource.update(id, request);
+      return (payment, null);
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] ?? 'Failed to update payment';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Failure?> delete(int id) async {
+    try {
+      await _remoteDataSource.delete(id);
+      return null;
+    } on DioException catch (e) {
+      return ServerFailure(e.message ?? 'Failed to delete payment');
+    } catch (e) {
+      return UnknownFailure(e.toString());
     }
   }
 }

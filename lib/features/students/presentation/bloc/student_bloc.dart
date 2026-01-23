@@ -74,6 +74,15 @@ class StudentUpdate extends StudentEvent {
   List<Object?> get props => [id, fullName, parentName, parentPhoneNumber];
 }
 
+class StudentDelete extends StudentEvent {
+  final int id;
+
+  const StudentDelete(this.id);
+
+  @override
+  List<Object?> get props => [id];
+}
+
 // States
 abstract class StudentState extends Equatable {
   const StudentState();
@@ -124,6 +133,7 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
     on<StudentCreate>(_onCreate);
     on<StudentCreateWithGroup>(_onCreateWithGroup);
     on<StudentUpdate>(_onUpdate);
+    on<StudentDelete>(_onDelete);
   }
 
   Future<void> _onLoadAll(
@@ -171,7 +181,7 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
       emit(StudentLoaded(_students));
     } else {
       _students = [..._students, student!];
-      emit(const StudentActionSuccess('Student created successfully'));
+      emit(const StudentActionSuccess('O\'quvchi muvaffaqiyatli qo\'shildi'));
       emit(StudentLoaded(_students));
     }
   }
@@ -205,7 +215,7 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
         // Student created but enrollment failed
         _students = [..._students, student];
         emit(StudentActionSuccess(
-            'Student created but enrollment failed: ${enrollFailure.message}'));
+            'O\'quvchi qo\'shildi, lekin guruhga qo\'shib bo\'lmadi: ${enrollFailure.message}'));
         emit(StudentLoaded(_students));
         return;
       }
@@ -220,8 +230,8 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
     }
 
     final message = event.groupId != null
-        ? 'Student created and enrolled successfully'
-        : 'Student created successfully';
+        ? 'O\'quvchi qo\'shildi va guruhga birlashtrildi'
+        : 'O\'quvchi muvaffaqiyatli qo\'shildi';
     emit(StudentActionSuccess(message));
     emit(StudentLoaded(_students));
   }
@@ -245,7 +255,23 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
     } else {
       _students =
           _students.map((s) => s.id == event.id ? student! : s).toList();
-      emit(const StudentActionSuccess('Student updated successfully'));
+      emit(const StudentActionSuccess('O\'quvchi muvaffaqiyatli yangilandi'));
+      emit(StudentLoaded(_students));
+    }
+  }
+
+  Future<void> _onDelete(
+    StudentDelete event,
+    Emitter<StudentState> emit,
+  ) async {
+    emit(StudentLoading());
+    final failure = await _repository.delete(event.id);
+    if (failure != null) {
+      emit(StudentError(failure.message));
+      emit(StudentLoaded(_students));
+    } else {
+      _students = _students.where((s) => s.id != event.id).toList();
+      emit(const StudentActionSuccess('O\'quvchi va barcha ma\'lumotlari o\'chirildi'));
       emit(StudentLoaded(_students));
     }
   }

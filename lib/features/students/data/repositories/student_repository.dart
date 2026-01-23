@@ -10,6 +10,7 @@ abstract class StudentRepository {
   Future<(StudentModel?, Failure?)> getById(int id);
   Future<(StudentModel?, Failure?)> create(StudentRequest request);
   Future<(StudentModel?, Failure?)> update(int id, StudentRequest request);
+  Future<Failure?> delete(int id);
 }
 
 class StudentRepositoryImpl implements StudentRepository {
@@ -77,6 +78,18 @@ class StudentRepositoryImpl implements StudentRepository {
       return (null, ServerFailure(e.message ?? 'Failed to update student'));
     } catch (e) {
       return (null, UnknownFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Failure?> delete(int id) async {
+    try {
+      await _remoteDataSource.delete(id);
+      return null;
+    } on DioException catch (e) {
+      return ServerFailure(e.message ?? 'Failed to delete student');
+    } catch (e) {
+      return UnknownFailure(e.toString());
     }
   }
 }

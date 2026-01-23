@@ -7,6 +7,8 @@ abstract class PaymentRemoteDataSource {
   Future<List<PaymentModel>> getByStudentId(int studentId);
   Future<List<PaymentModel>> getByGroupId(int groupId);
   Future<PaymentModel> create(PaymentRequest request);
+  Future<PaymentModel> update(int id, PaymentRequest request);
+  Future<void> delete(int id);
 }
 
 class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
@@ -54,5 +56,19 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
       data: request.toJson(),
     );
     return PaymentModel.fromJson(response.data!);
+  }
+
+  @override
+  Future<PaymentModel> update(int id, PaymentRequest request) async {
+    final response = await _apiClient.put<Map<String, dynamic>>(
+      '/api/payments/$id',
+      data: request.toJson(),
+    );
+    return PaymentModel.fromJson(response.data!);
+  }
+
+  @override
+  Future<void> delete(int id) async {
+    await _apiClient.delete('/api/payments/$id');
   }
 }

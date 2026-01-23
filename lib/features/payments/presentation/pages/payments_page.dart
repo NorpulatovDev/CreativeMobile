@@ -260,16 +260,41 @@ class _PaymentCard extends StatelessWidget {
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.successLight,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '${payment.amount.toStringAsFixed(0)} so\'m',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.success),
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.successLight,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${payment.amount.toStringAsFixed(0)} so\'m',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.success),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.edit_outlined, size: 20, color: AppColors.primary),
+                      onPressed: () => _showEditDialog(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      tooltip: 'Tahrirlash',
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.delete_outline, size: 20, color: AppColors.error),
+                      onPressed: () => _showDeleteDialog(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      tooltip: 'O\'chirish',
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
@@ -281,13 +306,59 @@ class _PaymentCard extends StatelessWidget {
     final colors = [AppColors.primary, AppColors.success, AppColors.warning, const Color(0xFF8B5CF6), const Color(0xFF06B6D4), const Color(0xFFF97316), AppColors.secondary];
     return colors[name.hashCode.abs() % colors.length];
   }
+
+  void _showEditDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => BlocProvider.value(
+        value: context.read<PaymentBloc>(),
+        child: PaymentFormDialog(payment: payment),
+      ),
+    );
+  }
+
+  void _showDeleteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: AppColors.errorLight, shape: BoxShape.circle),
+                child: Icon(Icons.delete_outline_rounded, size: 32, color: AppColors.error),
+              ),
+              const SizedBox(height: 20),
+              Text('To\'lovni o\'chirish', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              Text('${payment.studentName}ning ${payment.paidForMonth} oyi uchun to\'lovini o\'chirishni xohlaysizmi?', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.neutral500)),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(dialogContext), style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: BorderSide(color: AppColors.neutral300)), child: const Text('Bekor qilish'))),
+                  const SizedBox(width: 12),
+                  Expanded(child: ElevatedButton(onPressed: () { context.read<PaymentBloc>().add(PaymentDelete(payment.id)); Navigator.pop(dialogContext); }, style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)), child: const Text('O\'chirish'))),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class PaymentFormDialog extends StatefulWidget {
   final int? preselectedStudentId;
   final int? preselectedGroupId;
+  final PaymentModel? payment;
 
-  const PaymentFormDialog({super.key, this.preselectedStudentId, this.preselectedGroupId});
+  const PaymentFormDialog({super.key, this.preselectedStudentId, this.preselectedGroupId, this.payment});
 
   @override
   State<PaymentFormDialog> createState() => _PaymentFormDialogState();
@@ -295,13 +366,14 @@ class PaymentFormDialog extends StatefulWidget {
 
 class _PaymentFormDialogState extends State<PaymentFormDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _amountController = TextEditingController();
+  late final TextEditingController _amountController;
 
   List<GroupModel> _groups = [];
   List<EnrollmentModel> _groupStudents = [];
   bool _loadingGroups = true;
   bool _loadingStudents = false;
   bool _submitting = false;
+  bool get isEditing => widget.payment != null;
 
   int? _selectedGroupId;
   int? _selectedStudentId;
@@ -310,8 +382,19 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
   @override
   void initState() {
     super.initState();
-    _selectedGroupId = widget.preselectedGroupId;
-    _selectedStudentId = widget.preselectedStudentId;
+    
+    // Initialize from payment if editing
+    if (isEditing) {
+      _amountController = TextEditingController(text: widget.payment!.amount.toStringAsFixed(0));
+      _selectedGroupId = widget.payment!.groupId;
+      _selectedStudentId = widget.payment!.studentId;
+      _selectedMonth = widget.payment!.paidForMonth;
+    } else {
+      _amountController = TextEditingController();
+      _selectedGroupId = widget.preselectedGroupId;
+      _selectedStudentId = widget.preselectedStudentId;
+    }
+    
     _loadGroups();
   }
 
@@ -321,20 +404,22 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
       setState(() { _groups = groups ?? []; _loadingGroups = false; });
       if (_selectedGroupId != null) {
         _loadStudentsForGroup(_selectedGroupId!);
-        final group = _groups.firstWhere((g) => g.id == _selectedGroupId);
-        _amountController.text = group.monthlyFee.toStringAsFixed(0);
+        if (!isEditing) {
+          final group = _groups.firstWhere((g) => g.id == _selectedGroupId);
+          _amountController.text = group.monthlyFee.toStringAsFixed(0);
+        }
       }
     }
   }
 
   Future<void> _loadStudentsForGroup(int groupId) async {
-    setState(() { _loadingStudents = true; _groupStudents = []; if (widget.preselectedStudentId == null) _selectedStudentId = null; });
+    setState(() { _loadingStudents = true; _groupStudents = []; if (widget.preselectedStudentId == null && !isEditing) _selectedStudentId = null; });
     final (enrollments, _) = await getIt<EnrollmentRepository>().getGroupStudents(groupId);
     if (mounted) {
       setState(() {
         _groupStudents = (enrollments ?? []).where((e) => e.active).toList();
         _loadingStudents = false;
-        if (_selectedStudentId != null) {
+        if (_selectedStudentId != null && !isEditing) {
           final exists = _groupStudents.any((e) => e.studentId == _selectedStudentId);
           if (!exists) _selectedStudentId = null;
         }
@@ -364,7 +449,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
   Future<void> _sendPaymentSMS(String phoneNumber, String studentName, String groupName, String amount, String month) async {
     final monthFormatted = _formatMonth(month);
     final message = Uri.encodeComponent(
-      "Assalomu alaykum! ${studentName}ning $monthFormatted oyi uchun $amount so‘m to‘lovi qabul qilindi. Rahmat!",
+      "Assalomu alaykum! ${studentName}ning $monthFormatted oyi uchun $amount so'm to'lovi qabul qilindi. Rahmat!",
     );
     
     final smsUri = Uri.parse('sms:$phoneNumber?body=$message');
@@ -372,41 +457,9 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
     try {
       if (await canLaunchUrl(smsUri)) {
         await launchUrl(smsUri);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.error_outline, color: Colors.white),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text('SMS yuborishda xatolik yuz berdi')),
-                ],
-              ),
-              backgroundColor: AppColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-          );
-        }
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.error_outline, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(child: Text('SMS yuborishda xatolik: $e')),
-              ],
-            ),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
-      }
+      // Silently fail
     }
   }
 
@@ -423,9 +476,9 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(color: const Color(0xFF8B5CF6).withOpacity(0.1), borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
               child: Row(children: [
-                Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(0xFF8B5CF6).withOpacity(0.15), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.add_card_rounded, color: const Color(0xFF8B5CF6))),
+                Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(0xFF8B5CF6).withOpacity(0.15), borderRadius: BorderRadius.circular(12)), child: Icon(isEditing ? Icons.edit_rounded : Icons.add_card_rounded, color: const Color(0xFF8B5CF6))),
                 const SizedBox(width: 16),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Yangi to\'lov', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)), const SizedBox(height: 4), Text('To\'lov ma\'lumotlarini kiriting', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.neutral500))])),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(isEditing ? 'To\'lovni tahrirlash' : 'Yangi to\'lov', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)), const SizedBox(height: 4), Text(isEditing ? 'To\'lov ma\'lumotlarini yangilash' : 'To\'lov ma\'lumotlarini kiriting', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.neutral500))])),
               ]),
             ),
             Flexible(
@@ -443,7 +496,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
                               value: _selectedGroupId,
                               decoration: InputDecoration(prefixIcon: Icon(Icons.group_outlined, color: AppColors.neutral400)),
                               items: _groups.map((g) => DropdownMenuItem(value: g.id, child: Text('${g.name} (${g.monthlyFee.toStringAsFixed(0)} so\'m)'))).toList(),
-                              onChanged: (value) {
+                              onChanged: isEditing ? null : (value) {
                                 if (value != null) {
                                   setState(() { _selectedGroupId = value; final group = _groups.firstWhere((g) => g.id == value); _amountController.text = group.monthlyFee.toStringAsFixed(0); });
                                   _loadStudentsForGroup(value);
@@ -470,7 +523,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
                                   value: _selectedStudentId,
                                   decoration: InputDecoration(prefixIcon: Icon(Icons.person_outline_rounded, color: AppColors.neutral400)),
                                   items: _groupStudents.map((e) => DropdownMenuItem(value: e.studentId, child: Text(e.studentName))).toList(),
-                                  onChanged: (v) => setState(() => _selectedStudentId = v),
+                                  onChanged: isEditing ? null : (v) => setState(() => _selectedStudentId = v),
                                   validator: (v) => v == null ? 'O\'quvchini tanlang' : null,
                                 ),
                               ]),
@@ -510,7 +563,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
                 Expanded(child: ElevatedButton(
                   onPressed: _loadingGroups || _loadingStudents || _selectedGroupId == null || _groupStudents.isEmpty || _submitting ? null : _submit,
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)),
-                  child: _submitting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('To\'lovni saqlash'),
+                  child: _submitting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(isEditing ? 'Yangilash' : 'To\'lovni saqlash'),
                 )),
               ]),
             ),
@@ -525,69 +578,44 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
       setState(() => _submitting = true);
       
       try {
-        // Get student data to retrieve parent phone number
-        final (student, error) = await getIt<StudentRepository>().getById(_selectedStudentId!);
+        final bloc = context.read<PaymentBloc>();
         
-        if (student == null || error != null) {
-          if (mounted) {
-            setState(() => _submitting = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    Icon(Icons.error_outline, color: Colors.white),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text('O\'quvchi ma\'lumotlarini olishda xatolik')),
-                  ],
-                ),
-                backgroundColor: AppColors.error,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+        if (isEditing) {
+          bloc.add(PaymentUpdate(
+            id: widget.payment!.id,
+            studentId: _selectedStudentId!,
+            groupId: _selectedGroupId!,
+            amount: double.parse(_amountController.text.trim()),
+            paidForMonth: _selectedMonth,
+          ));
+        } else {
+          // Get student data for SMS
+          final (student, error) = await getIt<StudentRepository>().getById(_selectedStudentId!);
+          
+          bloc.add(PaymentCreate(
+            studentId: _selectedStudentId!,
+            groupId: _selectedGroupId!,
+            amount: double.parse(_amountController.text.trim()),
+            paidForMonth: _selectedMonth,
+          ));
+          
+          // Send SMS only for new payments
+          if (student != null && error == null) {
+            final selectedGroup = _groups.firstWhere((g) => g.id == _selectedGroupId);
+            await _sendPaymentSMS(
+              student.parentPhoneNumber,
+              student.fullName,
+              selectedGroup.name,
+              _amountController.text.trim(),
+              _selectedMonth,
             );
           }
-          return;
         }
         
-        final selectedGroup = _groups.firstWhere((g) => g.id == _selectedGroupId);
-        final amount = _amountController.text.trim();
-        
-        // Create payment
-        context.read<PaymentBloc>().add(PaymentCreate(
-          studentId: _selectedStudentId!,
-          groupId: _selectedGroupId!,
-          amount: double.parse(amount),
-          paidForMonth: _selectedMonth,
-        ));
-        
-        // Close dialog
         Navigator.pop(context);
-        
-        // Send SMS with parent phone number from student data
-        await _sendPaymentSMS(
-          student.parentPhoneNumber,
-          student.fullName,
-          selectedGroup.name,
-          amount,
-          _selectedMonth,
-        );
       } catch (e) {
         if (mounted) {
           setState(() => _submitting = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.error_outline, color: Colors.white),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text('Xatolik yuz berdi: $e')),
-                ],
-              ),
-              backgroundColor: AppColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-          );
         }
       }
     }

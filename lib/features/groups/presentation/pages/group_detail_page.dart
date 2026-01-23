@@ -29,8 +29,11 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
   GroupModel? _group;
   List<EnrollmentModel> _enrollments = [];
   List<PaymentModel> _payments = [];
-  List<StudentModel> _allStudents = [];
   bool _loading = true;
+  
+  // Maps to cache payment status and amounts
+  Map<int, bool> _paymentStatusMap = {};
+  Map<int, double> _paymentAmountMap = {};
 
   @override
   void initState() {
@@ -43,14 +46,47 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
     final (group, _) = await getIt<GroupRepository>().getById(widget.groupId);
     final (enrollments, _) = await getIt<EnrollmentRepository>().getGroupStudents(widget.groupId);
     final (payments, _) = await getIt<PaymentRepository>().getByGroupId(widget.groupId);
-    final (students, _) = await getIt<StudentRepository>().getAll();
 
     if (mounted) {
+      // Pre-compute payment status and amounts once for better performance
+      final currentMonth = DateFormat('yyyy-MM').format(DateTime.now());
+      final paymentStatusMap = <int, bool>{};
+      final paymentAmountMap = <int, double>{};
+      
+      for (var enrollment in enrollments ?? []) {
+        // Find payment for current month
+        final currentMonthPayment = (payments ?? []).firstWhere(
+          (payment) =>
+            payment.studentId == enrollment.studentId &&
+            payment.paidForMonth == currentMonth,
+          orElse: () => PaymentModel(
+            id: 0,
+            studentId: 0,
+            studentName: '',
+            groupId: 0,
+            groupName: '',
+            amount: 0,
+            paidForMonth: '',
+            paidAt: DateTime.now(),
+            // createdAt: DateTime.now(),
+          ),
+        );
+        
+        final hasPaid = currentMonthPayment.id != 0;
+        paymentStatusMap[enrollment.studentId] = hasPaid;
+        
+        // Store the amount if paid
+        if (hasPaid) {
+          paymentAmountMap[enrollment.studentId] = currentMonthPayment.amount;
+        }
+      }
+
       setState(() {
         _group = group;
         _enrollments = enrollments ?? [];
         _payments = payments ?? [];
-        _allStudents = students ?? [];
+        _paymentStatusMap = paymentStatusMap;
+        _paymentAmountMap = paymentAmountMap;
         _loading = false;
       });
     }
@@ -245,12 +281,19 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
         itemCount: _enrollments.length,
         itemBuilder: (context, index) {
           final enrollment = _enrollments[index];
+          
+          // O(1) lookup instead of O(n) search - much better performance
+          final isPaid = _paymentStatusMap[enrollment.studentId] ?? false;
+          final paidAmount = _paymentAmountMap[enrollment.studentId];
+          
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: _StudentEnrollmentCard(
               enrollment: enrollment,
               onRemove: () => _showRemoveStudentDialog(enrollment),
               onTap: () => context.push('${Routes.students}/${enrollment.studentId}'),
+              isPaid: isPaid,
+              paidAmount: paidAmount,
             ),
           );
         },
@@ -296,20 +339,14 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
   }
 
   void _showEnrollStudentDialog() {
-    final enrolledIds = _enrollments.map((e) => e.studentId).toSet();
-    final availableStudents = _allStudents.where((s) => !enrolledIds.contains(s.id)).toList();
-
-    if (availableStudents.isEmpty) {
-      _showSnackBar('Barcha o\'quvchilar allaqachon ro\'yxatdan o\'tgan', AppColors.warning, Icons.info_outline);
-      return;
-    }
-
     showDialog(
       context: context,
       builder: (dialogContext) => _EnrollStudentDialog(
-        availableStudents: availableStudents,
         groupId: widget.groupId,
+        enrolledStudentIds: _enrollments.map((e) => e.studentId).toSet(),
         onEnrolled: _loadData,
+        onError: (message) => _showSnackBar(message, AppColors.error, Icons.error_outline),
+        onWarning: (message) => _showSnackBar(message, AppColors.warning, Icons.info_outline),
       ),
     );
   }
@@ -406,8 +443,16 @@ class _StudentEnrollmentCard extends StatelessWidget {
   final EnrollmentModel enrollment;
   final VoidCallback onRemove;
   final VoidCallback onTap;
+  final bool isPaid;
+  final double? paidAmount;
 
-  const _StudentEnrollmentCard({required this.enrollment, required this.onRemove, required this.onTap});
+  const _StudentEnrollmentCard({
+    required this.enrollment,
+    required this.onRemove,
+    required this.onTap,
+    required this.isPaid,
+    this.paidAmount,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -423,29 +468,105 @@ class _StudentEnrollmentCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.surfaceLight,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.neutral200.withOpacity(0.5)),
-            boxShadow: [BoxShadow(color: AppColors.neutral900.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 2))],
+            border: Border.all(
+              color: isPaid 
+                ? AppColors.success.withOpacity(0.3) 
+                : AppColors.error.withOpacity(0.3),
+              width: 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.neutral900.withOpacity(0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              )
+            ],
           ),
           child: Row(
             children: [
               Container(
                 width: 48,
                 height: 48,
-                decoration: BoxDecoration(color: _getAvatarColor(enrollment.studentName).withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
-                child: Center(child: Text(enrollment.studentName.isNotEmpty ? enrollment.studentName[0].toUpperCase() : '?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: _getAvatarColor(enrollment.studentName)))),
+                decoration: BoxDecoration(
+                  color: isPaid 
+                    ? AppColors.success.withOpacity(0.1) 
+                    : AppColors.error.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Center(
+                  child: Text(
+                    enrollment.studentName.isNotEmpty 
+                      ? enrollment.studentName[0].toUpperCase() 
+                      : '?',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: isPaid ? AppColors.success : AppColors.error,
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(enrollment.studentName, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            enrollment.studentName,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        // Payment status badge with amount
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isPaid 
+                              ? AppColors.successLight 
+                              : AppColors.errorLight,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isPaid 
+                                  ? Icons.check_circle_rounded 
+                                  : Icons.cancel_rounded,
+                                size: 14,
+                                color: isPaid ? AppColors.success : AppColors.error,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isPaid 
+                                  ? '${paidAmount?.toStringAsFixed(0) ?? "0"} so\'m' 
+                                  : 'To\'lanmagan',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: isPaid ? AppColors.success : AppColors.error,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
                         Icon(Icons.calendar_today_rounded, size: 12, color: AppColors.neutral400),
                         const SizedBox(width: 4),
-                        Text('Qo\'shilgan: ${dateFormat.format(enrollment.enrolledAt)}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.neutral500)),
+                        Text(
+                          'Qo\'shilgan: ${dateFormat.format(enrollment.enrolledAt)}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppColors.neutral500,
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -462,11 +583,6 @@ class _StudentEnrollmentCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Color _getAvatarColor(String name) {
-    final colors = [AppColors.primary, AppColors.success, AppColors.warning, const Color(0xFF8B5CF6), const Color(0xFF06B6D4), const Color(0xFFF97316), AppColors.secondary];
-    return colors[name.hashCode.abs() % colors.length];
   }
 }
 
@@ -530,11 +646,19 @@ class _PaymentItemCard extends StatelessWidget {
 }
 
 class _EnrollStudentDialog extends StatefulWidget {
-  final List<StudentModel> availableStudents;
   final int groupId;
+  final Set<int> enrolledStudentIds;
   final VoidCallback onEnrolled;
+  final Function(String) onError;
+  final Function(String) onWarning;
 
-  const _EnrollStudentDialog({required this.availableStudents, required this.groupId, required this.onEnrolled});
+  const _EnrollStudentDialog({
+    required this.groupId,
+    required this.enrolledStudentIds,
+    required this.onEnrolled,
+    required this.onError,
+    required this.onWarning,
+  });
 
   @override
   State<_EnrollStudentDialog> createState() => _EnrollStudentDialogState();
@@ -543,6 +667,45 @@ class _EnrollStudentDialog extends StatefulWidget {
 class _EnrollStudentDialogState extends State<_EnrollStudentDialog> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _loading = true;
+  List<StudentModel> _availableStudents = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStudents();
+  }
+
+  Future<void> _loadStudents() async {
+    final (allStudents, failure) = await getIt<StudentRepository>().getAll();
+    
+    if (failure != null) {
+      if (mounted) {
+        Navigator.pop(context);
+        widget.onError('O\'quvchilarni yuklashda xatolik');
+      }
+      return;
+    }
+
+    final availableStudents = (allStudents ?? [])
+        .where((s) => !widget.enrolledStudentIds.contains(s.id))
+        .toList();
+
+    if (availableStudents.isEmpty) {
+      if (mounted) {
+        Navigator.pop(context);
+        widget.onWarning('Barcha o\'quvchilar allaqachon ro\'yxatdan o\'tgan');
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _availableStudents = availableStudents;
+        _loading = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -551,8 +714,13 @@ class _EnrollStudentDialogState extends State<_EnrollStudentDialog> {
   }
 
   List<StudentModel> get _filteredStudents {
-    if (_searchQuery.isEmpty) return widget.availableStudents;
-    return widget.availableStudents.where((s) => s.fullName.toLowerCase().contains(_searchQuery) || s.parentName.toLowerCase().contains(_searchQuery) || s.parentPhoneNumber.contains(_searchQuery)).toList();
+    if (_searchQuery.isEmpty) return _availableStudents;
+    return _availableStudents
+        .where((s) =>
+            s.fullName.toLowerCase().contains(_searchQuery) ||
+            s.parentName.toLowerCase().contains(_searchQuery) ||
+            s.parentPhoneNumber.contains(_searchQuery))
+        .toList();
   }
 
   @override
@@ -566,115 +734,217 @@ class _EnrollStudentDialogState extends State<_EnrollStudentDialog> {
           children: [
             Container(
               padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(color: AppColors.success.withOpacity(0.1), borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-              child: Row(children: [
-                Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: AppColors.success.withOpacity(0.15), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.person_add_rounded, color: AppColors.success)),
-                const SizedBox(width: 16),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('O\'quvchi qo\'shish', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)), const SizedBox(height: 4), Text('Guruhga qo\'shish uchun o\'quvchini tanlang', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.neutral500))])),
-              ]),
+              decoration: BoxDecoration(
+                color: AppColors.success.withOpacity(0.1),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.person_add_rounded, color: AppColors.success),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'O\'quvchi qo\'shish',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Guruhga qo\'shish uchun o\'quvchini tanlang',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppColors.neutral500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.neutral50,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.neutral200),
+            if (_loading)
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(color: AppColors.success),
+                      const SizedBox(height: 16),
+                      Text(
+                        'O\'quvchilar yuklanmoqda...',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppColors.neutral500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
-                  decoration: InputDecoration(
-                    hintText: 'Ism bo\'yicha qidirish...',
-                    hintStyle: TextStyle(color: AppColors.neutral400),
-                    prefixIcon: Icon(Icons.search_rounded, color: AppColors.neutral400),
-                    suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: Icon(Icons.close_rounded, color: AppColors.neutral400), onPressed: () { _searchController.clear(); setState(() => _searchQuery = ''); }) : null,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              )
+            else ...[
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.neutral50,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.neutral200),
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+                    decoration: InputDecoration(
+                      hintText: 'Ism bo\'yicha qidirish...',
+                      hintStyle: TextStyle(color: AppColors.neutral400),
+                      prefixIcon: Icon(Icons.search_rounded, color: AppColors.neutral400),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: Icon(Icons.close_rounded, color: AppColors.neutral400),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchQuery = '');
+                              },
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
                   ),
                 ),
               ),
-            ),
-            Flexible(
-              child: _filteredStudents.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.search_off_rounded, size: 48, color: AppColors.neutral300),
-                          const SizedBox(height: 12),
-                          Text('O\'quvchi topilmadi', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.neutral500)),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      shrinkWrap: true,
-                      itemCount: _filteredStudents.length,
-                      itemBuilder: (context, index) {
-                        final student = _filteredStudents[index];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () async {
-                                Navigator.pop(context);
-                                await getIt<EnrollmentRepository>().addStudentToGroup(student.id, widget.groupId);
-                                widget.onEnrolled();
-                              },
-                              borderRadius: BorderRadius.circular(14),
-                              child: Container(
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: AppColors.surfaceLight,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: AppColors.neutral200.withOpacity(0.5)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 44,
-                                      height: 44,
-                                      decoration: BoxDecoration(color: _getAvatarColor(student.fullName).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                                      child: Center(child: Text(student.fullName.isNotEmpty ? student.fullName[0].toUpperCase() : '?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _getAvatarColor(student.fullName)))),
+              Flexible(
+                child: _filteredStudents.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.search_off_rounded, size: 48, color: AppColors.neutral300),
+                            const SizedBox(height: 12),
+                            Text(
+                              'O\'quvchi topilmadi',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: AppColors.neutral500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        shrinkWrap: true,
+                        itemCount: _filteredStudents.length,
+                        itemBuilder: (context, index) {
+                          final student = _filteredStudents[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () async {
+                                  Navigator.pop(context);
+                                  await getIt<EnrollmentRepository>().addStudentToGroup(
+                                    student.id,
+                                    widget.groupId,
+                                  );
+                                  widget.onEnrolled();
+                                },
+                                borderRadius: BorderRadius.circular(14),
+                                child: Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surfaceLight,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: AppColors.neutral200.withOpacity(0.5),
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(student.fullName, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                          const SizedBox(height: 2),
-                                          Text(student.parentPhoneNumber, style: TextStyle(fontSize: 12, color: AppColors.neutral500)),
-                                        ],
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: _getAvatarColor(student.fullName).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            student.fullName.isNotEmpty
+                                                ? student.fullName[0].toUpperCase()
+                                                : '?',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w700,
+                                              color: _getAvatarColor(student.fullName),
+                                            ),
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(color: AppColors.success.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                                      child: Icon(Icons.add_rounded, size: 20, color: AppColors.success),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              student.fullName,
+                                              style: const TextStyle(fontWeight: FontWeight.w600),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              student.parentPhoneNumber,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: AppColors.neutral500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.success.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Icon(
+                                          Icons.add_rounded,
+                                          size: 20,
+                                          color: AppColors.success,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: AppColors.neutral300),
                     ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(20),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: BorderSide(color: AppColors.neutral300)),
-                  child: const Text('Bekor qilish'),
+                    child: const Text('Bekor qilish'),
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -682,7 +952,15 @@ class _EnrollStudentDialogState extends State<_EnrollStudentDialog> {
   }
 
   Color _getAvatarColor(String name) {
-    final colors = [AppColors.primary, AppColors.success, AppColors.warning, const Color(0xFF8B5CF6), const Color(0xFF06B6D4), const Color(0xFFF97316), AppColors.secondary];
+    final colors = [
+      AppColors.primary,
+      AppColors.success,
+      AppColors.warning,
+      const Color(0xFF8B5CF6),
+      const Color(0xFF06B6D4),
+      const Color(0xFFF97316),
+      AppColors.secondary
+    ];
     return colors[name.hashCode.abs() % colors.length];
   }
 }
