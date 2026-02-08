@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/router/routes.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/phone_formatter.dart';
 import '../../../groups/data/models/group_model.dart';
 import '../../../groups/data/repositories/group_repository.dart';
 import '../../data/models/student_model.dart';
@@ -549,7 +551,7 @@ class _StudentCard extends StatelessWidget {
                   children: [
                     _InfoChip(
                       icon: Icons.phone_outlined,
-                      label: student.parentPhoneNumber,
+                      label: PhoneValidator.toDisplayFormat(student.parentPhoneNumber),
                       color: AppColors.neutral600,
                     ),
                     const SizedBox(width: 8),
@@ -693,7 +695,9 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
   late final TextEditingController _parentNameController =
       TextEditingController(text: widget.student?.parentName);
   late final TextEditingController _phoneController = TextEditingController(
-    text: widget.student?.parentPhoneNumber,
+    text: widget.student != null 
+        ? PhoneValidator.toDisplayFormat(widget.student!.parentPhoneNumber)
+        : '+998 ',
   );
   List<GroupModel> _groups = [];
   int? _selectedGroupId;
@@ -812,20 +816,7 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
                               icon: Icons.family_restroom_rounded,
                             ),
                             const SizedBox(height: 16),
-                            _buildTextField(
-                              controller: _phoneController,
-                              label: 'Telefon raqami',
-                              hint: '+998XXXXXXXXX',
-                              icon: Icons.phone_outlined,
-                              keyboardType: TextInputType.phone,
-                              validator: (v) {
-                                if (v == null || v.trim().isEmpty)
-                                  return 'Telefon raqamini kiriting';
-                                if (!RegExp(r'^\+998[0-9]{9}$').hasMatch(v))
-                                  return 'Format: +998XXXXXXXXX';
-                                return null;
-                              },
-                            ),
+                            _buildPhoneField(),
                             if (!isEditing && _groups.isNotEmpty) ...[
                               const SizedBox(height: 16),
                               Column(
@@ -954,6 +945,43 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
     ],
   );
 
+  Widget _buildPhoneField() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'Telefon raqami',
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: AppColors.neutral700,
+        ),
+      ),
+      const SizedBox(height: 8),
+      TextFormField(
+        controller: _phoneController,
+        keyboardType: TextInputType.phone,
+        inputFormatters: [
+          // Remove FilteringTextInputFormatter.digitsOnly
+          // Use the new single formatter
+          UzbekPhoneNumberFormatter(),
+        ],
+        // You can keep your validator if it checks the final string length
+        validator: (value) {
+           if (value == null || value.length < 17) { // +998 90 123 45 67 is 17 chars
+             return 'Telefon raqamini to\'liq kiriting';
+           }
+           return null;
+        },
+        decoration: InputDecoration(
+          hintText: '+998 XX XXX XX XX',
+          prefixIcon: Icon(Icons.phone_outlined, color: AppColors.neutral400),
+          helperText: 'Format: +998 97 123 45 67',
+          helperStyle: TextStyle(fontSize: 11, color: AppColors.neutral400),
+        ),
+      ),
+    ],
+  );
+
   void _submit() async {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _submitting = true);
@@ -961,13 +989,15 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
       final parentName = _parentNameController.text.trim().isEmpty
           ? 'Unknown'
           : _parentNameController.text.trim();
+      final phoneNumber = PhoneValidator.toApiFormat(_phoneController.text);
+      
       if (isEditing) {
         bloc.add(
           StudentUpdate(
             id: widget.student!.id,
             fullName: _nameController.text.trim(),
             parentName: parentName,
-            parentPhoneNumber: _phoneController.text.trim(),
+            parentPhoneNumber: phoneNumber,
           ),
         );
       } else {
@@ -975,12 +1005,81 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
           StudentCreateWithGroup(
             fullName: _nameController.text.trim(),
             parentName: parentName,
-            parentPhoneNumber: _phoneController.text.trim(),
+            parentPhoneNumber: phoneNumber,
             groupId: _selectedGroupId,
           ),
         );
       }
       Navigator.pop(context);
     }
+  }
+}
+
+class UzbekPhoneNumberFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    // 1. Extract only digits from the input
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+
+    // 2. If the text is empty or just "998", reset to base prefix
+    if (digits.isEmpty) {
+      return const TextEditingValue(
+        text: '+998 ',
+        selection: TextSelection.collapsed(offset: 5),
+      );
+    }
+
+    // 3. Handle the prefix logic
+    // We strictly assume the number must start with 998.
+    // If the user deleted the prefix, we add it back.
+    // If the user typed digits, we ensure 998 is not duplicated.
+    String body = digits;
+    if (body.startsWith('998')) {
+      body = body.substring(3);
+    }
+
+    // Limit to 9 digits (standard Uzbek mobile number length)
+    if (body.length > 9) {
+      body = body.substring(0, 9);
+    }
+
+    // 4. Build the formatted string
+    final buffer = StringBuffer();
+    buffer.write('+998 ');
+
+    if (body.isNotEmpty) {
+      // Area code (2 digits) e.g., 90
+      buffer.write(body.substring(0, body.length >= 2 ? 2 : body.length));
+      if (body.length > 2) buffer.write(' ');
+    }
+
+    if (body.length > 2) {
+      // Next 3 digits e.g., 123
+      buffer.write(body.substring(2, body.length >= 5 ? 5 : body.length));
+      if (body.length > 5) buffer.write(' ');
+    }
+
+    if (body.length > 5) {
+      // Next 2 digits e.g., 45
+      buffer.write(body.substring(5, body.length >= 7 ? 7 : body.length));
+      if (body.length > 7) buffer.write(' ');
+    }
+
+    if (body.length > 7) {
+      // Last 2 digits e.g., 67
+      buffer.write(body.substring(7));
+    }
+
+    final formattedText = buffer.toString();
+
+    // 5. Return the new value with the cursor at the end
+    // (Simple implementation; for advanced cursor handling, more logic is needed)
+    return TextEditingValue(
+      text: formattedText,
+      selection: TextSelection.collapsed(offset: formattedText.length),
+    );
   }
 }

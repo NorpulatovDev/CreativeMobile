@@ -8,6 +8,9 @@ abstract class PaymentRepository {
   Future<(List<PaymentModel>?, Failure?)> getAll();
   Future<(List<PaymentModel>?, Failure?)> getByStudentId(int studentId);
   Future<(List<PaymentModel>?, Failure?)> getByGroupId(int groupId);
+  Future<(List<PaymentModel>?, Failure?)> getByGroupIdAndMonth(
+      int groupId, int year, int month);
+  Future<(PaymentModel?, Failure?)> getById(int id);
   Future<(PaymentModel?, Failure?)> create(PaymentRequest request);
   Future<(PaymentModel?, Failure?)> update(int id, PaymentRequest request);
   Future<Failure?> delete(int id);
@@ -55,26 +58,54 @@ class PaymentRepositoryImpl implements PaymentRepository {
   }
 
   @override
-  Future<(PaymentModel?, Failure?)> create(PaymentRequest request) async {
+  Future<(List<PaymentModel>?, Failure?)> getByGroupIdAndMonth(
+      int groupId, int year, int month) async {
     try {
-      final payment = await _remoteDataSource.create(request);
-      return (payment, null);
+      final payments =
+          await _remoteDataSource.getByGroupIdAndMonth(groupId, year, month);
+      return (payments, null);
     } on DioException catch (e) {
-      final message = e.response?.data?['message'] ?? 'Failed to create payment';
-      return (null, ServerFailure(message));
+      return (null, ServerFailure(e.message ?? 'Failed to load payments'));
     } catch (e) {
       return (null, UnknownFailure(e.toString()));
     }
   }
 
   @override
-  Future<(PaymentModel?, Failure?)> update(int id, PaymentRequest request) async {
+  Future<(PaymentModel?, Failure?)> getById(int id) async {
+    try {
+      final payment = await _remoteDataSource.getById(id);
+      return (payment, null);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return (null, const ServerFailure('Payment not found'));
+      }
+      return (null, ServerFailure(e.message ?? 'Failed to load payment'));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<(PaymentModel?, Failure?)> create(PaymentRequest request) async {
+    try {
+      final payment = await _remoteDataSource.create(request);
+      return (payment, null);
+    } on DioException catch (e) {
+      return (null, ServerFailure(e.message ?? 'Failed to create payment'));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<(PaymentModel?, Failure?)> update(
+      int id, PaymentRequest request) async {
     try {
       final payment = await _remoteDataSource.update(id, request);
       return (payment, null);
     } on DioException catch (e) {
-      final message = e.response?.data?['message'] ?? 'Failed to update payment';
-      return (null, ServerFailure(message));
+      return (null, ServerFailure(e.message ?? 'Failed to update payment'));
     } catch (e) {
       return (null, UnknownFailure(e.toString()));
     }

@@ -6,7 +6,8 @@ import '../models/student_model.dart';
 
 abstract class StudentRepository {
   Future<(List<StudentModel>?, Failure?)> getAll();
-  Future<(List<StudentModel>?, Failure?)> getByGroupId(int groupId);
+  Future<(List<StudentModel>?, Failure?)> getByGroupId(int groupId,
+      {int? year, int? month});
   Future<(StudentModel?, Failure?)> getById(int id);
   Future<(StudentModel?, Failure?)> create(StudentRequest request);
   Future<(StudentModel?, Failure?)> update(int id, StudentRequest request);
@@ -31,9 +32,11 @@ class StudentRepositoryImpl implements StudentRepository {
   }
 
   @override
-  Future<(List<StudentModel>?, Failure?)> getByGroupId(int groupId) async {
+  Future<(List<StudentModel>?, Failure?)> getByGroupId(int groupId,
+      {int? year, int? month}) async {
     try {
-      final students = await _remoteDataSource.getByGroupId(groupId);
+      final students =
+          await _remoteDataSource.getByGroupId(groupId, year: year, month: month);
       return (students, null);
     } on DioException catch (e) {
       return (null, ServerFailure(e.message ?? 'Failed to load students'));
@@ -70,7 +73,8 @@ class StudentRepositoryImpl implements StudentRepository {
   }
 
   @override
-  Future<(StudentModel?, Failure?)> update(int id, StudentRequest request) async {
+  Future<(StudentModel?, Failure?)> update(
+      int id, StudentRequest request) async {
     try {
       final student = await _remoteDataSource.update(id, request);
       return (student, null);

@@ -449,7 +449,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
   Future<void> _sendPaymentSMS(String phoneNumber, String studentName, String groupName, String amount, String month) async {
     final monthFormatted = _formatMonth(month);
     final message = Uri.encodeComponent(
-      "Assalomu alaykum! ${studentName}ning $monthFormatted oyi uchun $amount so'm to'lovi qabul qilindi. Rahmat!",
+      "Assalomu alaykum!\nCreative O‘quv Markazi ma’muriyati sizga ma’lum qiladiki, ${studentName}ning $monthFormatted oyi uchun $amount so'm to'lovi qabul qilindi.\nRahmat!",
     );
     
     final smsUri = Uri.parse('sms:$phoneNumber?body=$message');

@@ -3,7 +3,7 @@ import '../models/student_model.dart';
 
 abstract class StudentRemoteDataSource {
   Future<List<StudentModel>> getAll();
-  Future<List<StudentModel>> getByGroupId(int groupId);
+  Future<List<StudentModel>> getByGroupId(int groupId, {int? year, int? month});
   Future<StudentModel> getById(int id);
   Future<StudentModel> create(StudentRequest request);
   Future<StudentModel> update(int id, StudentRequest request);
@@ -24,9 +24,17 @@ class StudentRemoteDataSourceImpl implements StudentRemoteDataSource {
   }
 
   @override
-  Future<List<StudentModel>> getByGroupId(int groupId) async {
-    final response =
-        await _apiClient.get<List<dynamic>>('/api/students/group/$groupId');
+  Future<List<StudentModel>> getByGroupId(int groupId,
+      {int? year, int? month}) async {
+    // Build query parameters
+    final queryParams = <String, dynamic>{};
+    if (year != null) queryParams['year'] = year;
+    if (month != null) queryParams['month'] = month;
+
+    final response = await _apiClient.get<List<dynamic>>(
+      '/api/students/group/$groupId',
+      queryParameters: queryParams.isNotEmpty ? queryParams : null,
+    );
     return (response.data ?? [])
         .map((json) => StudentModel.fromJson(json as Map<String, dynamic>))
         .toList();

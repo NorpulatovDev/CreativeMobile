@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:creative/features/inquiries/presentation/pages/inquiries_page.dart';
+
 import '../../features/attendance/presentation/pages/attendance_page.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
@@ -90,6 +92,11 @@ class AppRouter {
                 },
               ),
             ],
+          ),
+          GoRoute(
+            path: Routes.inquiries,
+            name: 'inquiries',
+            builder: (context, state) => const InquiriesPage(),
           ),
           GoRoute(
             path: Routes.payments,
@@ -518,9 +525,9 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       title,
       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-        fontWeight: FontWeight.w700,
-        color: AppColors.neutral800,
-      ),
+            fontWeight: FontWeight.w700,
+            color: AppColors.neutral800,
+          ),
     );
   }
 }
@@ -623,6 +630,13 @@ class _QuickActionsGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = [
+      _QuickAction(
+        icon: Icons.contact_phone_rounded,
+        label: 'So\'rovlar',
+        color: const Color(0xFF3B82F6),
+        bgColor: const Color(0xFFDBeafe),
+        route: Routes.inquiries,
+      ),
       _QuickAction(
         icon: Icons.group_add_rounded,
         label: 'Yangi guruh',
@@ -829,15 +843,15 @@ class _ManagementItem extends StatelessWidget {
                     Text(
                       title,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                            fontWeight: FontWeight.w600,
+                          ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.neutral500,
-                      ),
+                            color: AppColors.neutral500,
+                          ),
                     ),
                   ],
                 ),

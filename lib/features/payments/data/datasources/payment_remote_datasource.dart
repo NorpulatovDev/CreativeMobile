@@ -3,9 +3,10 @@ import '../models/payment_model.dart';
 
 abstract class PaymentRemoteDataSource {
   Future<List<PaymentModel>> getAll();
-  Future<PaymentModel> getById(int id);
   Future<List<PaymentModel>> getByStudentId(int studentId);
   Future<List<PaymentModel>> getByGroupId(int groupId);
+  Future<List<PaymentModel>> getByGroupIdAndMonth(int groupId, int year, int month);
+  Future<PaymentModel> getById(int id);
   Future<PaymentModel> create(PaymentRequest request);
   Future<PaymentModel> update(int id, PaymentRequest request);
   Future<void> delete(int id);
@@ -25,13 +26,6 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
   }
 
   @override
-  Future<PaymentModel> getById(int id) async {
-    final response =
-        await _apiClient.get<Map<String, dynamic>>('/api/payments/$id');
-    return PaymentModel.fromJson(response.data!);
-  }
-
-  @override
   Future<List<PaymentModel>> getByStudentId(int studentId) async {
     final response = await _apiClient
         .get<List<dynamic>>('/api/payments/student/$studentId');
@@ -47,6 +41,23 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
     return (response.data ?? [])
         .map((json) => PaymentModel.fromJson(json as Map<String, dynamic>))
         .toList();
+  }
+
+  @override
+  Future<List<PaymentModel>> getByGroupIdAndMonth(
+      int groupId, int year, int month) async {
+    final response = await _apiClient.get<List<dynamic>>(
+        '/api/payments/group/$groupId/month/$year/$month');
+    return (response.data ?? [])
+        .map((json) => PaymentModel.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<PaymentModel> getById(int id) async {
+    final response =
+        await _apiClient.get<Map<String, dynamic>>('/api/payments/$id');
+    return PaymentModel.fromJson(response.data!);
   }
 
   @override

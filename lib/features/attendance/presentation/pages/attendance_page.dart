@@ -376,7 +376,7 @@ class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
     final today = DateTime.now();
     final dateStr = DateFormat('dd.MM.yyyy').format(today);
     final message =
-        'Hurmatli ota-ona, ${student.fullName} bugun ($dateStr) darsga kelmadi. Iltimos, sababini ma’lum qilishingizni so‘raymiz.';
+        "Hurmatli ota-ona,\nCreative O‘quv Markazi ma’muriyati sizga ma’lum qiladiki, ${student.fullName} bugun ($dateStr) darsga kelmadi.\nIltimos, kelmaslik sababini bizga ma’lum qilishingizni so‘raymiz.";
 
     final phone = student.parentPhoneNumber.replaceAll('+', '');
     final uri = Uri.parse('sms:+$phone?body=${Uri.encodeComponent(message)}');
@@ -491,14 +491,18 @@ class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () {} ,
+                      onLongPress: () => Navigator.pop(context),
                       child: const Text('Bekor qilish'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
-                      onPressed: _enrollments.isEmpty ? null : _submit,
+                      onPressed: () {
+                        
+                      },
+                      onLongPress: _enrollments.isEmpty ? null : _submit,
                       child: const Text('Saqlash'),
                     ),
                   ),

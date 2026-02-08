@@ -39,10 +39,15 @@ import '../../features/attendance/data/datasources/attendance_remote_datasource.
 import '../../features/attendance/data/repositories/attendance_repository.dart';
 import '../../features/attendance/presentation/bloc/attendance_bloc.dart';
 
-// Reports - CORRECTED IMPORTS
+// Reports
 import '../../features/reports/data/datasources/report_remote_datasource.dart';
 import '../../features/reports/data/repositories/report_repository.dart';
 import '../../features/reports/presentation/bloc/report_bloc.dart';
+
+// Inquiries - NEW FEATURE
+import '../../features/inquiries/data/datasources/inquiry_remote_datasource.dart';
+import '../../features/inquiries/data/repositories/inquiry_repository.dart';
+import '../../features/inquiries/presentation/bloc/inquiry_bloc.dart';
 
 final getIt = GetIt.instance;
 
@@ -117,15 +122,23 @@ Future<void> configureDependencies() async {
   );
   getIt.registerFactory<AttendanceBloc>(() => AttendanceBloc(getIt()));
 
-  // Reports Feature - PROPERLY REGISTERED
+  // Reports Feature
   getIt.registerSingleton<ReportRemoteDataSource>(
     ReportRemoteDataSourceImpl(getIt()),
   );
   getIt.registerSingleton<ReportRepository>(
     ReportRepositoryImpl(getIt()),
   );
-  // Register as Factory so each page gets a fresh instance
   getIt.registerFactory<ReportBloc>(() => ReportBloc(getIt()));
+
+  // Inquiries Feature - NEW REGISTRATION
+  getIt.registerSingleton<InquiryRemoteDataSource>(
+    InquiryRemoteDataSourceImpl(getIt()),
+  );
+  getIt.registerSingleton<InquiryRepository>(
+    InquiryRepositoryImpl(getIt()),
+  );
+  getIt.registerFactory<InquiryBloc>(() => InquiryBloc(getIt()));
 
   // Router
   getIt.registerSingleton<AppRouter>(AppRouter(getIt()));

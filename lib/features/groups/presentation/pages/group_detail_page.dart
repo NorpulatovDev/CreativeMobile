@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/router/routes.dart';
@@ -24,69 +23,43 @@ class GroupDetailPage extends StatefulWidget {
   State<GroupDetailPage> createState() => _GroupDetailPageState();
 }
 
-class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProviderStateMixin {
+class _GroupDetailPageState extends State<GroupDetailPage>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   GroupModel? _group;
-  List<EnrollmentModel> _enrollments = [];
+  List<StudentModel> _students = [];
   List<PaymentModel> _payments = [];
   bool _loading = true;
-  
-  // Maps to cache payment status and amounts
-  Map<int, bool> _paymentStatusMap = {};
-  Map<int, double> _paymentAmountMap = {};
+
+  // Selected month/year
+  late DateTime _selectedMonth;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _selectedMonth = DateTime.now();
     _loadData();
   }
 
   Future<void> _loadData() async {
-    final (group, _) = await getIt<GroupRepository>().getById(widget.groupId);
-    final (enrollments, _) = await getIt<EnrollmentRepository>().getGroupStudents(widget.groupId);
-    final (payments, _) = await getIt<PaymentRepository>().getByGroupId(widget.groupId);
+    setState(() => _loading = true);
+
+    final year = _selectedMonth.year;
+    final month = _selectedMonth.month;
+
+    final (group, _) =
+        await getIt<GroupRepository>().getById(widget.groupId);
+    final (students, _) = await getIt<StudentRepository>()
+        .getByGroupId(widget.groupId, year: year, month: month);
+    final (payments, _) = await getIt<PaymentRepository>()
+        .getByGroupIdAndMonth(widget.groupId, year, month);
 
     if (mounted) {
-      // Pre-compute payment status and amounts once for better performance
-      final currentMonth = DateFormat('yyyy-MM').format(DateTime.now());
-      final paymentStatusMap = <int, bool>{};
-      final paymentAmountMap = <int, double>{};
-      
-      for (var enrollment in enrollments ?? []) {
-        // Find payment for current month
-        final currentMonthPayment = (payments ?? []).firstWhere(
-          (payment) =>
-            payment.studentId == enrollment.studentId &&
-            payment.paidForMonth == currentMonth,
-          orElse: () => PaymentModel(
-            id: 0,
-            studentId: 0,
-            studentName: '',
-            groupId: 0,
-            groupName: '',
-            amount: 0,
-            paidForMonth: '',
-            paidAt: DateTime.now(),
-            // createdAt: DateTime.now(),
-          ),
-        );
-        
-        final hasPaid = currentMonthPayment.id != 0;
-        paymentStatusMap[enrollment.studentId] = hasPaid;
-        
-        // Store the amount if paid
-        if (hasPaid) {
-          paymentAmountMap[enrollment.studentId] = currentMonthPayment.amount;
-        }
-      }
-
       setState(() {
         _group = group;
-        _enrollments = enrollments ?? [];
+        _students = students ?? [];
         _payments = payments ?? [];
-        _paymentStatusMap = paymentStatusMap;
-        _paymentAmountMap = paymentAmountMap;
         _loading = false;
       });
     }
@@ -102,12 +75,76 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(children: [Icon(icon, color: Colors.white), const SizedBox(width: 12), Expanded(child: Text(message))]),
+        content: Row(children: [
+          Icon(icon, color: Colors.white),
+          const SizedBox(width: 12),
+          Expanded(child: Text(message))
+        ]),
         backgroundColor: backgroundColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
+  }
+
+  void _showMonthPicker() async {
+    final now = DateTime.now();
+    final firstDate = DateTime(2020, 1);
+    final lastDate = DateTime(now.year + 1, 12);
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          constraints: const BoxConstraints(maxWidth: 350),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Oy tanlang',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 300,
+                child: YearMonthPicker(
+                  selectedDate: _selectedMonth,
+                  firstDate: firstDate,
+                  lastDate: lastDate,
+                  onChanged: (date) {
+                    Navigator.pop(context);
+                    setState(() => _selectedMonth = date);
+                    _loadData();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+      'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'
+    ];
+    return months[month - 1];
   }
 
   @override
@@ -116,7 +153,8 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
       return Scaffold(
         backgroundColor: AppColors.backgroundLight,
         appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
-        body: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+        body: const Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
       );
     }
 
@@ -130,11 +168,15 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
             children: [
               Container(
                 padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(color: AppColors.errorLight, shape: BoxShape.circle),
-                child: Icon(Icons.error_outline_rounded, size: 48, color: AppColors.error),
+                decoration: BoxDecoration(
+                    color: AppColors.errorLight, shape: BoxShape.circle),
+                child: Icon(Icons.error_outline_rounded,
+                    size: 48, color: AppColors.error),
               ),
               const SizedBox(height: 24),
-              Text('Guruh topilmadi', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppColors.neutral700, fontWeight: FontWeight.w600)),
+              Text('Guruh topilmadi',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: AppColors.neutral700, fontWeight: FontWeight.w600)),
             ],
           ),
         ),
@@ -154,7 +196,10 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: const BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [AppColors.gradientStart, AppColors.gradientEnd]),
+                  gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.gradientStart, AppColors.gradientEnd]),
                 ),
                 child: SafeArea(
                   child: Padding(
@@ -167,21 +212,42 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
                             Container(
                               width: 64,
                               height: 64,
-                              decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                              child: Center(child: Text(_group!.name.isNotEmpty ? _group!.name[0].toUpperCase() : 'G', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Colors.white))),
+                              decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(20)),
+                              child: Center(
+                                  child: Text(
+                                      _group!.name.isNotEmpty
+                                          ? _group!.name[0].toUpperCase()
+                                          : 'G',
+                                      style: const TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white))),
                             ),
                             const SizedBox(width: 16),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(_group!.name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Colors.white)),
+                                  Text(_group!.name,
+                                      style: const TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white)),
                                   const SizedBox(height: 4),
                                   Row(
                                     children: [
-                                      Icon(Icons.person_outline_rounded, size: 16, color: Colors.white.withOpacity(0.8)),
+                                      Icon(Icons.person_outline_rounded,
+                                          size: 16,
+                                          color:
+                                              Colors.white.withOpacity(0.8)),
                                       const SizedBox(width: 6),
-                                      Text(_group!.teacherName, style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.9))),
+                                      Text(_group!.teacherName,
+                                          style: TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.white
+                                                  .withOpacity(0.9))),
                                     ],
                                   ),
                                 ],
@@ -192,11 +258,16 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
                         const Spacer(),
                         Row(
                           children: [
-                            _StatItem(icon: Icons.people_rounded, value: '${_group!.studentsCount}', label: 'O\'quvchi'),
+                            _StatItem(
+                                icon: Icons.people_rounded,
+                                value: '${_group!.studentsCount}',
+                                label: 'O\'quvchi'),
                             const SizedBox(width: 24),
-                            _StatItem(icon: Icons.payments_rounded, value: '${_group!.monthlyFee.toStringAsFixed(0)}', label: 'so\'m/oy'),
-                            const SizedBox(width: 24),
-                            _StatItem(icon: Icons.account_balance_wallet_rounded, value: '${_group!.totalPaid.toStringAsFixed(0)}', label: 'Jami'),
+                            _StatItem(
+                                icon: Icons.payments_rounded,
+                                value:
+                                    '${_group!.monthlyFee.toStringAsFixed(0)}',
+                                label: 'so\'m/oy'),
                           ],
                         ),
                       ],
@@ -210,7 +281,8 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
               child: Container(
                 decoration: const BoxDecoration(
                   color: AppColors.surfaceLight,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(24)),
                 ),
                 child: TabBar(
                   controller: _tabController,
@@ -220,19 +292,88 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
                   indicatorWeight: 3,
                   labelStyle: const TextStyle(fontWeight: FontWeight.w600),
                   tabs: const [
-                    Tab(text: 'O\'quvchilar', icon: Icon(Icons.people_rounded, size: 20)),
-                    Tab(text: 'To\'lovlar', icon: Icon(Icons.payment_rounded, size: 20)),
+                    Tab(
+                        text: 'O\'quvchilar',
+                        icon: Icon(Icons.people_rounded, size: 20)),
+                    Tab(
+                        text: 'To\'lovlar',
+                        icon: Icon(Icons.payment_rounded, size: 20)),
                   ],
                 ),
               ),
             ),
           ),
         ],
-        body: TabBarView(
-          controller: _tabController,
+        body: Column(
           children: [
-            _buildStudentsTab(),
-            _buildPaymentsTab(),
+            // Month selector
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceLight,
+                border: Border(
+                  bottom: BorderSide(
+                    color: AppColors.neutral200.withOpacity(0.5),
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_month_rounded,
+                      size: 20, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${_getMonthName(_selectedMonth.month).toUpperCase()} ${_selectedMonth.year}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.neutral700,
+                      ),
+                    ),
+                  ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _showMonthPicker,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              'O\'zgartirish',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.arrow_drop_down,
+                                size: 20, color: AppColors.primary),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildStudentsTab(),
+                  _buildPaymentsTab(),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -244,30 +385,46 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
             _showAddPaymentDialog();
           }
         },
-        backgroundColor: _tabController.index == 0 ? AppColors.success : const Color(0xFF8B5CF6),
+        backgroundColor:
+            _tabController.index == 0 ? AppColors.success : const Color(0xFF8B5CF6),
         foregroundColor: Colors.white,
         elevation: 4,
-        icon: Icon(_tabController.index == 0 ? Icons.person_add_rounded : Icons.add_card_rounded),
-        label: Text(_tabController.index == 0 ? 'O\'quvchi qo\'shish' : 'To\'lov qo\'shish', style: const TextStyle(fontWeight: FontWeight.w600)),
+        icon: Icon(_tabController.index == 0
+            ? Icons.person_add_rounded
+            : Icons.add_card_rounded),
+        label: Text(
+            _tabController.index == 0
+                ? 'O\'quvchi qo\'shish'
+                : 'To\'lov qo\'shish',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
       ),
     );
   }
 
   Widget _buildStudentsTab() {
-    if (_enrollments.isEmpty) {
+    if (_students.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
               padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(color: AppColors.success.withOpacity(0.1), shape: BoxShape.circle),
-              child: Icon(Icons.people_outline_rounded, size: 48, color: AppColors.success),
+              decoration: BoxDecoration(
+                  color: AppColors.success.withOpacity(0.1),
+                  shape: BoxShape.circle),
+              child: Icon(Icons.people_outline_rounded,
+                  size: 48, color: AppColors.success),
             ),
             const SizedBox(height: 24),
-            Text('O\'quvchilar yo\'q', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppColors.neutral700, fontWeight: FontWeight.w600)),
+            Text('O\'quvchilar yo\'q',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: AppColors.neutral700, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Text('Guruhga o\'quvchi qo\'shing', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.neutral500)),
+            Text('Guruhga o\'quvchi qo\'shing',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: AppColors.neutral500)),
           ],
         ),
       );
@@ -278,22 +435,31 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
       color: AppColors.success,
       child: ListView.builder(
         padding: const EdgeInsets.all(20),
-        itemCount: _enrollments.length,
+        itemCount: _students.length,
         itemBuilder: (context, index) {
-          final enrollment = _enrollments[index];
-          
-          // O(1) lookup instead of O(n) search - much better performance
-          final isPaid = _paymentStatusMap[enrollment.studentId] ?? false;
-          final paidAmount = _paymentAmountMap[enrollment.studentId];
-          
+          final student = _students[index];
+
+          // Find payment status for this student in this group
+          GroupInfo? groupInfo;
+          try {
+            groupInfo = student.activeGroups.firstWhere(
+              (g) => g.groupId == widget.groupId,
+            );
+          } catch (e) {
+            // If not found, try to get first available group
+            if (student.activeGroups.isNotEmpty) {
+              groupInfo = student.activeGroups.first;
+            }
+          }
+
+          if (groupInfo == null) return const SizedBox.shrink();
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _StudentEnrollmentCard(
-              enrollment: enrollment,
-              onRemove: () => _showRemoveStudentDialog(enrollment),
-              onTap: () => context.push('${Routes.students}/${enrollment.studentId}'),
-              isPaid: isPaid,
-              paidAmount: paidAmount,
+            child: _StudentCard(
+              student: student,
+              groupInfo: groupInfo,
+              onTap: () => context.push('${Routes.students}/${student.id}'),
             ),
           );
         },
@@ -309,13 +475,22 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
           children: [
             Container(
               padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(color: const Color(0xFF8B5CF6).withOpacity(0.1), shape: BoxShape.circle),
-              child: Icon(Icons.payment_rounded, size: 48, color: const Color(0xFF8B5CF6)),
+              decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                  shape: BoxShape.circle),
+              child: Icon(Icons.payment_rounded,
+                  size: 48, color: const Color(0xFF8B5CF6)),
             ),
             const SizedBox(height: 24),
-            Text('To\'lovlar yo\'q', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppColors.neutral700, fontWeight: FontWeight.w600)),
+            Text('To\'lovlar yo\'q',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: AppColors.neutral700, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Text('Hali to\'lov qilinmagan', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.neutral500)),
+            Text('Hali to\'lov qilinmagan',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: AppColors.neutral500)),
           ],
         ),
       );
@@ -343,69 +518,26 @@ class _GroupDetailPageState extends State<GroupDetailPage> with SingleTickerProv
       context: context,
       builder: (dialogContext) => _EnrollStudentDialog(
         groupId: widget.groupId,
-        enrolledStudentIds: _enrollments.map((e) => e.studentId).toSet(),
         onEnrolled: _loadData,
-        onError: (message) => _showSnackBar(message, AppColors.error, Icons.error_outline),
-        onWarning: (message) => _showSnackBar(message, AppColors.warning, Icons.info_outline),
-      ),
-    );
-  }
-
-  void _showRemoveStudentDialog(EnrollmentModel enrollment) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 400),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: AppColors.errorLight, shape: BoxShape.circle),
-                child: Icon(Icons.person_remove_rounded, size: 32, color: AppColors.error),
-              ),
-              const SizedBox(height: 20),
-              Text('O\'quvchini chiqarish', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 12),
-              Text('${enrollment.studentName}ni ${_group!.name} guruhidan chiqarishni xohlaysizmi?', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.neutral500)),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(dialogContext), style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: BorderSide(color: AppColors.neutral300)), child: const Text('Bekor qilish'))),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        Navigator.pop(dialogContext);
-                        await getIt<EnrollmentRepository>().removeStudentFromGroup(enrollment.studentId, widget.groupId);
-                        _loadData();
-                        _showSnackBar('O\'quvchi guruhdan chiqarildi', AppColors.success, Icons.check_circle_outline);
-                      },
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)),
-                      child: const Text('Chiqarish'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+        onError: (message) =>
+            _showSnackBar(message, AppColors.error, Icons.error_outline),
+        onWarning: (message) =>
+            _showSnackBar(message, AppColors.warning, Icons.info_outline),
       ),
     );
   }
 
   void _showAddPaymentDialog() {
-    if (_enrollments.isEmpty) {
-      _showSnackBar('Bu guruhda o\'quvchilar yo\'q', AppColors.warning, Icons.info_outline);
+    if (_students.isEmpty) {
+      _showSnackBar('Bu guruhda o\'quvchilar yo\'q', AppColors.warning,
+          Icons.info_outline);
       return;
     }
 
     showDialog(
       context: context,
-      builder: (dialogContext) => PaymentFormDialog(preselectedGroupId: widget.groupId),
+      builder: (dialogContext) =>
+          PaymentFormDialog(preselectedGroupId: widget.groupId),
     ).then((_) => _loadData());
   }
 }
@@ -415,7 +547,8 @@ class _StatItem extends StatelessWidget {
   final String value;
   final String label;
 
-  const _StatItem({required this.icon, required this.value, required this.label});
+  const _StatItem(
+      {required this.icon, required this.value, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -423,15 +556,23 @@ class _StatItem extends StatelessWidget {
       children: [
         Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
+          decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(10)),
           child: Icon(icon, size: 18, color: Colors.white),
         ),
         const SizedBox(width: 10),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-            Text(label, style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.8))),
+            Text(value,
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white)),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11, color: Colors.white.withOpacity(0.8))),
           ],
         ),
       ],
@@ -439,24 +580,20 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-class _StudentEnrollmentCard extends StatelessWidget {
-  final EnrollmentModel enrollment;
-  final VoidCallback onRemove;
+class _StudentCard extends StatelessWidget {
+  final StudentModel student;
+  final GroupInfo groupInfo;
   final VoidCallback onTap;
-  final bool isPaid;
-  final double? paidAmount;
 
-  const _StudentEnrollmentCard({
-    required this.enrollment,
-    required this.onRemove,
+  const _StudentCard({
+    required this.student,
+    required this.groupInfo,
     required this.onTap,
-    required this.isPaid,
-    this.paidAmount,
   });
 
   @override
   Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd MMM yyyy');
+    final isPaid = groupInfo.paidForCurrentMonth;
 
     return Material(
       color: Colors.transparent,
@@ -469,9 +606,9 @@ class _StudentEnrollmentCard extends StatelessWidget {
             color: AppColors.surfaceLight,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isPaid 
-                ? AppColors.success.withOpacity(0.3) 
-                : AppColors.error.withOpacity(0.3),
+              color: isPaid
+                  ? AppColors.success.withOpacity(0.3)
+                  : AppColors.error.withOpacity(0.3),
               width: 2,
             ),
             boxShadow: [
@@ -488,16 +625,16 @@ class _StudentEnrollmentCard extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: isPaid 
-                    ? AppColors.success.withOpacity(0.1) 
-                    : AppColors.error.withOpacity(0.1),
+                  color: isPaid
+                      ? AppColors.success.withOpacity(0.1)
+                      : AppColors.error.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Center(
                   child: Text(
-                    enrollment.studentName.isNotEmpty 
-                      ? enrollment.studentName[0].toUpperCase() 
-                      : '?',
+                    student.fullName.isNotEmpty
+                        ? student.fullName[0].toUpperCase()
+                        : '?',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -511,71 +648,50 @@ class _StudentEnrollmentCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            enrollment.studentName,
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        // Payment status badge with amount
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: isPaid 
-                              ? AppColors.successLight 
-                              : AppColors.errorLight,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                isPaid 
-                                  ? Icons.check_circle_rounded 
-                                  : Icons.cancel_rounded,
-                                size: 14,
-                                color: isPaid ? AppColors.success : AppColors.error,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                isPaid 
-                                  ? '${paidAmount?.toStringAsFixed(0) ?? "0"} so\'m' 
-                                  : 'To\'lanmagan',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: isPaid ? AppColors.success : AppColors.error,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                    Text(
+                      student.fullName,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.calendar_today_rounded, size: 12, color: AppColors.neutral400),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Qo\'shilgan: ${dateFormat.format(enrollment.enrolledAt)}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.neutral500,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isPaid
+                            ? AppColors.successLight
+                            : AppColors.errorLight,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isPaid
+                                ? Icons.check_circle_rounded
+                                : Icons.cancel_rounded,
+                            size: 14,
+                            color: isPaid ? AppColors.success : AppColors.error,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 4),
+                          Text(
+                            isPaid
+                                ? '${groupInfo.amountPaidThisMonth!.toStringAsFixed(0)} so\'m'
+                                : 'To\'lanmagan',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color:
+                                  isPaid ? AppColors.success : AppColors.error,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-              IconButton(
-                onPressed: onRemove,
-                icon: Icon(Icons.remove_circle_outline_rounded, color: AppColors.error),
-                tooltip: 'Guruhdan chiqarish',
               ),
               Icon(Icons.chevron_right_rounded, color: AppColors.neutral400),
             ],
@@ -591,9 +707,23 @@ class _PaymentItemCard extends StatelessWidget {
 
   const _PaymentItemCard({required this.payment});
 
+  String _formatDate(DateTime date) {
+    const months = [
+      'Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyun',
+      'Iyul', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'
+    ];
+    
+    final day = date.day.toString().padLeft(2, '0');
+    final month = months[date.month - 1];
+    final year = date.year;
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    
+    return '$day $month $year, $hour:$minute';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd MMM yyyy, HH:mm');
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -601,34 +731,57 @@ class _PaymentItemCard extends StatelessWidget {
         color: AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.neutral200.withOpacity(0.5)),
-        boxShadow: [BoxShadow(color: AppColors.neutral900.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 2))],
+        boxShadow: [
+          BoxShadow(
+              color: AppColors.neutral900.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 2))
+        ],
       ),
       child: Row(
         children: [
           Container(
             width: 48,
             height: 48,
-            decoration: BoxDecoration(color: const Color(0xFF8B5CF6).withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
-            child: const Center(child: Icon(Icons.receipt_long_rounded, color: Color(0xFF8B5CF6))),
+            decoration: BoxDecoration(
+                color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(14)),
+            child: const Center(
+                child: Icon(Icons.receipt_long_rounded,
+                    color: Color(0xFF8B5CF6))),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(payment.studentName, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                Text(payment.studentName,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: AppColors.neutral100, borderRadius: BorderRadius.circular(6)),
-                      child: Text(payment.paidForMonth, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.neutral600)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                          color: AppColors.neutral100,
+                          borderRadius: BorderRadius.circular(6)),
+                      child: Text(payment.paidForMonth,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.neutral600)),
                     ),
                     const SizedBox(width: 8),
-                    Icon(Icons.access_time_rounded, size: 12, color: AppColors.neutral400),
+                    Icon(Icons.access_time_rounded,
+                        size: 12, color: AppColors.neutral400),
                     const SizedBox(width: 4),
-                    Text(dateFormat.format(payment.paidAt), style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.neutral400, fontSize: 11)),
+                    Text(_formatDate(payment.paidAt),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppColors.neutral400, fontSize: 11)),
                   ],
                 ),
               ],
@@ -636,8 +789,14 @@ class _PaymentItemCard extends StatelessWidget {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(color: AppColors.successLight, borderRadius: BorderRadius.circular(10)),
-            child: Text('${payment.amount.toStringAsFixed(0)} so\'m', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success)),
+            decoration: BoxDecoration(
+                color: AppColors.successLight,
+                borderRadius: BorderRadius.circular(10)),
+            child: Text('${payment.amount.toStringAsFixed(0)} so\'m',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.success)),
           ),
         ],
       ),
@@ -647,14 +806,12 @@ class _PaymentItemCard extends StatelessWidget {
 
 class _EnrollStudentDialog extends StatefulWidget {
   final int groupId;
-  final Set<int> enrolledStudentIds;
   final VoidCallback onEnrolled;
   final Function(String) onError;
   final Function(String) onWarning;
 
   const _EnrollStudentDialog({
     required this.groupId,
-    required this.enrolledStudentIds,
     required this.onEnrolled,
     required this.onError,
     required this.onWarning,
@@ -669,6 +826,7 @@ class _EnrollStudentDialogState extends State<_EnrollStudentDialog> {
   String _searchQuery = '';
   bool _loading = true;
   List<StudentModel> _availableStudents = [];
+  Set<int> _enrolledStudentIds = {};
 
   @override
   void initState() {
@@ -677,8 +835,11 @@ class _EnrollStudentDialogState extends State<_EnrollStudentDialog> {
   }
 
   Future<void> _loadStudents() async {
-    final (allStudents, failure) = await getIt<StudentRepository>().getAll();
-    
+    final (allStudents, failure) =
+        await getIt<StudentRepository>().getAll();
+    final (enrollments, _) =
+        await getIt<EnrollmentRepository>().getGroupStudents(widget.groupId);
+
     if (failure != null) {
       if (mounted) {
         Navigator.pop(context);
@@ -687,8 +848,11 @@ class _EnrollStudentDialogState extends State<_EnrollStudentDialog> {
       return;
     }
 
+    _enrolledStudentIds =
+        (enrollments ?? []).map((e) => e.studentId).toSet();
+
     final availableStudents = (allStudents ?? [])
-        .where((s) => !widget.enrolledStudentIds.contains(s.id))
+        .where((s) => !_enrolledStudentIds.contains(s.id))
         .toList();
 
     if (availableStudents.isEmpty) {
@@ -736,7 +900,8 @@ class _EnrollStudentDialogState extends State<_EnrollStudentDialog> {
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: AppColors.success.withOpacity(0.1),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: Row(
                 children: [
@@ -746,203 +911,74 @@ class _EnrollStudentDialogState extends State<_EnrollStudentDialog> {
                       color: AppColors.success.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.person_add_rounded, color: AppColors.success),
+                    child: Icon(Icons.person_add_rounded,
+                        color: AppColors.success),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'O\'quvchi qo\'shish',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Guruhga qo\'shish uchun o\'quvchini tanlang',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.neutral500,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      'O\'quvchi qo\'shish',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
               ),
             ),
             if (_loading)
-              Expanded(
+              const Expanded(
                 child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const CircularProgressIndicator(color: AppColors.success),
-                      const SizedBox(height: 16),
-                      Text(
-                        'O\'quvchilar yuklanmoqda...',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.neutral500,
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: CircularProgressIndicator(color: AppColors.success),
                 ),
               )
             else ...[
               Padding(
                 padding: const EdgeInsets.all(20),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.neutral50,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.neutral200),
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
-                    decoration: InputDecoration(
-                      hintText: 'Ism bo\'yicha qidirish...',
-                      hintStyle: TextStyle(color: AppColors.neutral400),
-                      prefixIcon: Icon(Icons.search_rounded, color: AppColors.neutral400),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: Icon(Icons.close_rounded, color: AppColors.neutral400),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _searchQuery = '');
-                              },
-                            )
-                          : null,
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    ),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (value) =>
+                      setState(() => _searchQuery = value.toLowerCase()),
+                  decoration: InputDecoration(
+                    hintText: 'Ism bo\'yicha qidirish...',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
                   ),
                 ),
               ),
               Flexible(
                 child: _filteredStudents.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.search_off_rounded, size: 48, color: AppColors.neutral300),
-                            const SizedBox(height: 12),
-                            Text(
-                              'O\'quvchi topilmadi',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: AppColors.neutral500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
+                    ? const Center(child: Text('O\'quvchi topilmadi'))
                     : ListView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         shrinkWrap: true,
                         itemCount: _filteredStudents.length,
                         itemBuilder: (context, index) {
                           final student = _filteredStudents[index];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () async {
-                                  Navigator.pop(context);
-                                  await getIt<EnrollmentRepository>().addStudentToGroup(
-                                    student.id,
-                                    widget.groupId,
-                                  );
-                                  widget.onEnrolled();
-                                },
-                                borderRadius: BorderRadius.circular(14),
-                                child: Container(
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.surfaceLight,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: AppColors.neutral200.withOpacity(0.5),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 44,
-                                        height: 44,
-                                        decoration: BoxDecoration(
-                                          color: _getAvatarColor(student.fullName).withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Center(
-                                          child: Text(
-                                            student.fullName.isNotEmpty
-                                                ? student.fullName[0].toUpperCase()
-                                                : '?',
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w700,
-                                              color: _getAvatarColor(student.fullName),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              student.fullName,
-                                              style: const TextStyle(fontWeight: FontWeight.w600),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              student.parentPhoneNumber,
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: AppColors.neutral500,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.success.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(10),
-                                        ),
-                                        child: Icon(
-                                          Icons.add_rounded,
-                                          size: 20,
-                                          color: AppColors.success,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
+                          return ListTile(
+                            title: Text(student.fullName),
+                            subtitle: Text(student.parentPhoneNumber),
+                            onTap: () async {
+                              Navigator.pop(context);
+                              await getIt<EnrollmentRepository>()
+                                  .addStudentToGroup(
+                                student.id,
+                                widget.groupId,
+                              );
+                              widget.onEnrolled();
+                            },
                           );
                         },
                       ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(20),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: BorderSide(color: AppColors.neutral300),
-                    ),
-                    child: const Text('Bekor qilish'),
-                  ),
-                ),
               ),
             ],
           ],
@@ -950,17 +986,111 @@ class _EnrollStudentDialogState extends State<_EnrollStudentDialog> {
       ),
     );
   }
+}
 
-  Color _getAvatarColor(String name) {
-    final colors = [
-      AppColors.primary,
-      AppColors.success,
-      AppColors.warning,
-      const Color(0xFF8B5CF6),
-      const Color(0xFF06B6D4),
-      const Color(0xFFF97316),
-      AppColors.secondary
-    ];
-    return colors[name.hashCode.abs() % colors.length];
+// Simple YearMonth picker widget
+class YearMonthPicker extends StatefulWidget {
+  final DateTime selectedDate;
+  final DateTime firstDate;
+  final DateTime lastDate;
+  final ValueChanged<DateTime> onChanged;
+
+  const YearMonthPicker({
+    super.key,
+    required this.selectedDate,
+    required this.firstDate,
+    required this.lastDate,
+    required this.onChanged,
+  });
+
+  @override
+  State<YearMonthPicker> createState() => _YearMonthPickerState();
+}
+
+class _YearMonthPickerState extends State<YearMonthPicker> {
+  late int _selectedYear;
+  late int _selectedMonth;
+
+  static const List<String> _monthNames = [
+    'Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyun',
+    'Iyul', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedYear = widget.selectedDate.year;
+    _selectedMonth = widget.selectedDate.month;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Year selector
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_left),
+              onPressed: _selectedYear > widget.firstDate.year
+                  ? () => setState(() => _selectedYear--)
+                  : null,
+            ),
+            Text(
+              '$_selectedYear',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right),
+              onPressed: _selectedYear < widget.lastDate.year
+                  ? () => setState(() => _selectedYear++)
+                  : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        // Month grid
+        Expanded(
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              childAspectRatio: 2,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemCount: 12,
+            itemBuilder: (context, index) {
+              final month = index + 1;
+              final isSelected =
+                  month == _selectedMonth && _selectedYear == widget.selectedDate.year;
+              return InkWell(
+                onTap: () {
+                  widget.onChanged(DateTime(_selectedYear, month));
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.neutral100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _monthNames[index],
+                      style: TextStyle(
+                        color: isSelected ? Colors.white : AppColors.neutral700,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
