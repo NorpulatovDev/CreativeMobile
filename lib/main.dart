@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive_ce_flutter/hive_flutter.dart';
 
 import 'core/api/api_client.dart';
 import 'core/di/injection.dart';
+import 'core/offline/sync_status_cubit.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/sync_status_banner.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  // Initialize Hive for offline storage
+  await Hive.initFlutter();
+
   // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -20,15 +26,15 @@ void main() async {
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
-  
+
   await configureDependencies();
-  
+
   // Set up logout callback for token expiration handling
   final authBloc = getIt<AuthBloc>();
   ApiClient.setLogoutCallback(() async {
     authBloc.add(AuthLogout());
   });
-  
+
   runApp(const MyApp());
 }
 
@@ -37,13 +43,24 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider.value(
-      value: getIt<AuthBloc>(),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: getIt<AuthBloc>()),
+        BlocProvider.value(value: getIt<SyncStatusCubit>()),
+      ],
       child: MaterialApp.router(
         title: 'Creative O\'quv Markazi',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         routerConfig: getIt<AppRouter>().router,
+        builder: (context, child) {
+          return Column(
+            children: [
+              const SyncStatusBanner(),
+              Expanded(child: child ?? const SizedBox.shrink()),
+            ],
+          );
+        },
       ),
     );
   }

@@ -267,7 +267,10 @@ class _StudentsViewState extends State<StudentsView> {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _StudentCard(
                           student: filteredStudents[index],
-                          onDelete: () => _showDeleteDialog(context, filteredStudents[index]),
+                          onDelete: () => _showDeleteDialog(
+                            context,
+                            filteredStudents[index],
+                          ),
                         ),
                       ),
                       childCount: filteredStudents.length,
@@ -331,17 +334,17 @@ class _StudentsViewState extends State<StudentsView> {
               const SizedBox(height: 20),
               Text(
                 'O\'quvchini o\'chirish',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
               Text(
                 '${student.fullName}ni o\'chirishni xohlaysizmi? Barcha guruhlar, to\'lovlar va davomat yozuvlari ham o\'chiriladi.',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.neutral500,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: AppColors.neutral500),
               ),
               const SizedBox(height: 24),
               Row(
@@ -360,7 +363,9 @@ class _StudentsViewState extends State<StudentsView> {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () {
-                        context.read<StudentBloc>().add(StudentDelete(student.id));
+                        context.read<StudentBloc>().add(
+                          StudentDelete(student.id),
+                        );
                         Navigator.pop(dialogContext);
                       },
                       style: ElevatedButton.styleFrom(
@@ -384,11 +389,8 @@ class _StudentsViewState extends State<StudentsView> {
 class _StudentCard extends StatelessWidget {
   final StudentModel student;
   final VoidCallback onDelete;
-  
-  const _StudentCard({
-    required this.student,
-    required this.onDelete,
-  });
+
+  const _StudentCard({required this.student, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -551,7 +553,9 @@ class _StudentCard extends StatelessWidget {
                   children: [
                     _InfoChip(
                       icon: Icons.phone_outlined,
-                      label: PhoneValidator.toDisplayFormat(student.parentPhoneNumber),
+                      label: PhoneValidator.toDisplayFormat(
+                        student.parentPhoneNumber,
+                      ),
                       color: AppColors.neutral600,
                     ),
                     const SizedBox(width: 8),
@@ -695,7 +699,7 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
   late final TextEditingController _parentNameController =
       TextEditingController(text: widget.student?.parentName);
   late final TextEditingController _phoneController = TextEditingController(
-    text: widget.student != null 
+    text: widget.student != null
         ? PhoneValidator.toDisplayFormat(widget.student!.parentPhoneNumber)
         : '+998 ',
   );
@@ -967,10 +971,11 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
         ],
         // You can keep your validator if it checks the final string length
         validator: (value) {
-           if (value == null || value.length < 17) { // +998 90 123 45 67 is 17 chars
-             return 'Telefon raqamini to\'liq kiriting';
-           }
-           return null;
+          if (value == null || value.length < 17) {
+            // +998 90 123 45 67 is 17 chars
+            return 'Telefon raqamini to\'liq kiriting';
+          }
+          return null;
         },
         decoration: InputDecoration(
           hintText: '+998 XX XXX XX XX',
@@ -989,8 +994,10 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
       final parentName = _parentNameController.text.trim().isEmpty
           ? 'Unknown'
           : _parentNameController.text.trim();
-      final phoneNumber = PhoneValidator.toApiFormat(_phoneController.text);
-      
+
+      // Remove spaces from phone number before sending to API
+      final phoneNumber = _phoneController.text.replaceAll(' ', '');
+
       if (isEditing) {
         bloc.add(
           StudentUpdate(

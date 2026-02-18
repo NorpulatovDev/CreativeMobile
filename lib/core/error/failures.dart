@@ -33,6 +33,10 @@ class ValidationFailure extends Failure {
   List<Object> get props => [message, fieldErrors ?? {}];
 }
 
+class CacheFailure extends Failure {
+  const CacheFailure([super.message = 'No cached data available']);
+}
+
 class UnknownFailure extends Failure {
   const UnknownFailure([super.message = 'An unknown error occurred']);
 }

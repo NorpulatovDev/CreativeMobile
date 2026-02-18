@@ -51,6 +51,12 @@ dependencies:
   # Local Storage
   shared_preferences: ^2.3.2
   flutter_secure_storage: ^9.2.2
+  hive_ce: ^2.7.0
+  hive_ce_flutter: ^2.3.4
+
+  # Offline Support
+  connectivity_plus: ^6.1.4
+  uuid: ^4.5.1
 
   # UI
   cupertino_icons: ^1.0.8
