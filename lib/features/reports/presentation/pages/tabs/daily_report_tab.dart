@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../../core/widgets/app_widgets.dart' hide StatCard;
 import '../../../data/models/report_models.dart';
 import '../../bloc/report_bloc.dart';
-import '../../widgets/empty_state.dart';
 import '../../widgets/stat_card.dart';
 
 class DailyReportTab extends StatefulWidget {
@@ -149,7 +149,7 @@ class _DailyReportContent extends StatelessWidget {
         const SizedBox(height: 24),
 
         // Group Attendance
-        _SectionHeader(
+        SectionHeader(
           title: 'Group Attendance',
           count: report.groupAttendances.length,
         ),
@@ -201,7 +201,7 @@ class _DailyReportContent extends StatelessWidget {
 
         if (report.payments.isNotEmpty) ...[
           const SizedBox(height: 24),
-          _SectionHeader(
+          SectionHeader(
             title: 'Payments',
             count: report.payments.length,
           ),
@@ -238,42 +238,3 @@ class _DailyReportContent extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final int? count;
-
-  const _SectionHeader({
-    required this.title,
-    this.count,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(
-          title,
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        if (count != null) ...[
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.secondaryContainer,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSecondaryContainer,
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}

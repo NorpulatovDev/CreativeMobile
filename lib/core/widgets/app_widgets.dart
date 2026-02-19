@@ -332,6 +332,8 @@ class EmptyState extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget? action;
+  final String? actionText;
+  final VoidCallback? onAction;
 
   const EmptyState({
     super.key,
@@ -339,10 +341,16 @@ class EmptyState extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.action,
+    this.actionText,
+    this.onAction,
   });
 
   @override
   Widget build(BuildContext context) {
+    final actionWidget = action ?? (actionText != null && onAction != null
+        ? ElevatedButton(onPressed: onAction, child: Text(actionText!))
+        : null);
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -351,7 +359,7 @@ class EmptyState extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: AppColors.neutral100,
                 shape: BoxShape.circle,
               ),
@@ -379,9 +387,9 @@ class EmptyState extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ],
-            if (action != null) ...[
+            if (actionWidget != null) ...[
               const SizedBox(height: 24),
-              action!,
+              actionWidget,
             ],
           ],
         ),
@@ -597,23 +605,24 @@ class AnimatedIconContainer extends StatelessWidget {
   }
 }
 
-/// Section header with optional action
+/// Section header with optional action and optional count badge
 class SectionHeader extends StatelessWidget {
   final String title;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final int? count;
 
   const SectionHeader({
     super.key,
     required this.title,
     this.actionLabel,
     this.onAction,
+    this.count,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           title,
@@ -622,12 +631,197 @@ class SectionHeader extends StatelessWidget {
             color: AppColors.neutral800,
           ),
         ),
+        if (count != null) ...[
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.primaryContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$count',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+        ],
+        const Spacer(),
         if (actionLabel != null && onAction != null)
           TextButton(
             onPressed: onAction,
             child: Text(actionLabel!),
           ),
       ],
+    );
+  }
+}
+
+/// A label-value row for detail sections
+class InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final bool bold;
+
+  const InfoRow({
+    super.key,
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.bold = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(fontSize: 13, color: AppColors.neutral500),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
+              color: valueColor ?? AppColors.neutral700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A label-above-value column for stat summaries
+class InfoColumn extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? color;
+
+  const InfoColumn({
+    super.key,
+    required this.label,
+    required this.value,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A small colored stat card with optional icon
+class MiniStatCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final IconData? icon;
+
+  const MiniStatCard({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.color,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (icon != null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 24, color: color),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(fontSize: 10, color: color),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: color),
+          ),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(fontSize: 11, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+/// A simple info card with an icon and message (for empty list sections)
+class NoDataCard extends StatelessWidget {
+  final String message;
+
+  const NoDataCard({super.key, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.neutral50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.neutral200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline_rounded, color: AppColors.neutral400),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(message, style: TextStyle(color: AppColors.neutral500)),
+          ),
+        ],
+      ),
     );
   }
 }

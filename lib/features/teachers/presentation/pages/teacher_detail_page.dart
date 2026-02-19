@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/router/routes.dart';
+import '../../../../core/widgets/app_widgets.dart';
 import '../../../groups/data/models/group_model.dart';
 import '../../../groups/data/repositories/group_repository.dart';
 import '../../../payments/data/models/payment_model.dart';
@@ -177,15 +178,15 @@ class _TeacherDetailPageState extends State<TeacherDetailPage>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _InfoColumn(
+                InfoColumn(
                   label: 'Groups',
                   value: '${_groups.length}',
                 ),
-                _InfoColumn(
+                InfoColumn(
                   label: 'Students',
                   value: '$_totalStudents',
                 ),
-                _InfoColumn(
+                InfoColumn(
                   label: 'Total Income',
                   value: '${_totalPayments.toStringAsFixed(0)}',
                   color: Theme.of(context).colorScheme.primary,
@@ -406,34 +407,3 @@ class _PaymentWithGroup {
   _PaymentWithGroup({required this.payment, required this.group});
 }
 
-class _InfoColumn extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? color;
-
-  const _InfoColumn({
-    required this.label,
-    required this.value,
-    this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-        ),
-      ],
-    );
-  }
-}

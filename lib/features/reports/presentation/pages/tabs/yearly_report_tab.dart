@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../../core/theme/app_theme.dart';
+import '../../../../../core/widgets/app_widgets.dart';
 import '../../../data/models/report_models.dart';
 import '../../bloc/report_bloc.dart';
+import '../../widgets/report_stat_card.dart';
 
 class YearlyReportTab extends StatefulWidget {
   const YearlyReportTab({super.key});
@@ -196,27 +198,28 @@ class _YearlyReportTabState extends State<YearlyReportTab> with AutomaticKeepAli
         const SizedBox(height: 12),
 
         // Attendance Card
-        _StatCard(
+        ReportStatCard(
           title: 'Davomat',
           value: '${report.attendanceStats.attendanceRate.toStringAsFixed(1)}%',
           subtitle: '${report.attendanceStats.totalPresent} kelgan, ${report.attendanceStats.totalAbsent} kelmagan',
           icon: Icons.fact_check_rounded,
           color: AppColors.success,
+          horizontal: true,
         ),
         const SizedBox(height: 24),
 
         // Monthly Breakdown
-        _SectionHeader(title: 'Oylik daromad', count: report.monthlyBreakdown.length),
+        SectionHeader(title: 'Oylik daromad', count: report.monthlyBreakdown.length),
         const SizedBox(height: 12),
         if (report.monthlyBreakdown.isEmpty)
-          _buildNoDataCard('Bu yil uchun daromad ma\'lumotlari yo\'q')
+          const NoDataCard(message: 'Bu yil uchun daromad ma\'lumotlari yo\'q')
         else
           ...report.monthlyBreakdown.map((month) => _MonthlyRevenueCard(month: month)),
 
         // Teacher Performance
         if (report.teacherStats.isNotEmpty) ...[
           const SizedBox(height: 24),
-          _SectionHeader(title: 'O\'qituvchilar natijasi', count: report.teacherStats.length),
+          SectionHeader(title: 'O\'qituvchilar natijasi', count: report.teacherStats.length),
           const SizedBox(height: 12),
           ...report.teacherStats.map((teacher) => _TeacherStatsCard(teacher: teacher)),
         ],
@@ -224,25 +227,11 @@ class _YearlyReportTabState extends State<YearlyReportTab> with AutomaticKeepAli
         // Top Groups
         if (report.topGroups.isNotEmpty) ...[
           const SizedBox(height: 24),
-          _SectionHeader(title: 'Eng yaxshi guruhlar', count: report.topGroups.length),
+          SectionHeader(title: 'Eng yaxshi guruhlar', count: report.topGroups.length),
           const SizedBox(height: 12),
           ...report.topGroups.asMap().entries.map((entry) => _TopGroupCard(rank: entry.key + 1, group: entry.value)),
         ],
       ],
-    );
-  }
-
-  Widget _buildNoDataCard(String message) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: AppColors.neutral50, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.neutral200)),
-      child: Row(
-        children: [
-          Icon(Icons.info_outline_rounded, color: AppColors.neutral400),
-          const SizedBox(width: 12),
-          Expanded(child: Text(message, style: TextStyle(color: AppColors.neutral500))),
-        ],
-      ),
     );
   }
 }
@@ -286,74 +275,6 @@ class _TotalRevenueCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-
-  const _StatCard({required this.title, required this.value, required this.subtitle, required this.icon, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.neutral200.withOpacity(0.5)),
-        boxShadow: [BoxShadow(color: AppColors.neutral900.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 2))],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
-            child: Icon(icon, size: 24, color: color),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: TextStyle(fontSize: 13, color: AppColors.neutral500)),
-                const SizedBox(height: 4),
-                Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.neutral800)),
-                Text(subtitle, style: TextStyle(fontSize: 12, color: AppColors.neutral500)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final int? count;
-
-  const _SectionHeader({required this.title, this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.neutral800)),
-        if (count != null) ...[
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: AppColors.primaryContainer, borderRadius: BorderRadius.circular(12)),
-            child: Text('$count', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary)),
-          ),
-        ],
-      ],
     );
   }
 }
@@ -439,41 +360,15 @@ class _TeacherStatsCard extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(child: _MiniStatCard(label: 'Guruhlar', value: '${teacher.groupCount}', icon: Icons.groups_rounded, color: AppColors.primary)),
+                Expanded(child: MiniStatCard(label: 'Guruhlar', value: '${teacher.groupCount}', icon: Icons.groups_rounded, color: AppColors.primary)),
                 const SizedBox(width: 8),
-                Expanded(child: _MiniStatCard(label: 'O\'quvchilar', value: '${teacher.totalStudents}', icon: Icons.people_rounded, color: AppColors.success)),
+                Expanded(child: MiniStatCard(label: 'O\'quvchilar', value: '${teacher.totalStudents}', icon: Icons.people_rounded, color: AppColors.success)),
                 const SizedBox(width: 8),
-                Expanded(child: _MiniStatCard(label: 'Daromad', value: '${(teacher.totalRevenue / 1000000).toStringAsFixed(1)}M', icon: Icons.payments_rounded, color: const Color(0xFF8B5CF6))),
+                Expanded(child: MiniStatCard(label: 'Daromad', value: '${(teacher.totalRevenue / 1000000).toStringAsFixed(1)}M', icon: Icons.payments_rounded, color: const Color(0xFF8B5CF6))),
               ],
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _MiniStatCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  const _MiniStatCard({required this.label, required this.value, required this.icon, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        children: [
-          Icon(icon, size: 24, color: color),
-          const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 10, color: color), textAlign: TextAlign.center),
-        ],
       ),
     );
   }

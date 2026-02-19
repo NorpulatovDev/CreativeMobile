@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/router/routes.dart';
+import '../../../../core/widgets/app_widgets.dart';
 import '../../../attendance/data/models/attendance_model.dart';
 import '../../../attendance/data/repositories/attendance_repository.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
@@ -266,16 +267,16 @@ class _StudentDetailPageState extends State<StudentDetailPage>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _InfoColumn(
+                InfoColumn(
                   label: 'Groups',
                   value: '${_student!.activeGroupsCount}',
                 ),
-                _InfoColumn(
+                InfoColumn(
                   label: 'Total Paid',
                   value: '${_student!.totalPaid.toStringAsFixed(0)} UZS',
                   color: Theme.of(context).colorScheme.primary,
                 ),
-                _InfoColumn(
+                InfoColumn(
                   label: 'Payments',
                   value: '${_payments.length}',
                 ),
@@ -848,37 +849,6 @@ class _LegendItem extends StatelessWidget {
   }
 }
 
-class _InfoColumn extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? color;
-
-  const _InfoColumn({
-    required this.label,
-    required this.value,
-    this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-        ),
-      ],
-    );
-  }
-}
 
 class _StatCard extends StatelessWidget {
   final IconData icon;
