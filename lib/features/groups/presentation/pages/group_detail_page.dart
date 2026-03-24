@@ -593,7 +593,33 @@ class _StudentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isPaid = groupInfo.paidForCurrentMonth;
+    final double amountPaid = groupInfo.amountPaidThisMonth ?? 0;
+    final double monthlyFee = groupInfo.monthlyFee;
+    
+    final bool isFullyPaid = amountPaid >= monthlyFee;
+    final bool isUnpaid = amountPaid <= 0;
+    
+    Color statusColor;
+    Color statusLightColor;
+    IconData statusIcon;
+    String statusText;
+
+    if (isFullyPaid) {
+      statusColor = AppColors.success;
+      statusLightColor = AppColors.successLight;
+      statusIcon = Icons.check_circle_rounded;
+      statusText = '${amountPaid.toStringAsFixed(0)} so\'m';
+    } else if (isUnpaid) {
+      statusColor = AppColors.error;
+      statusLightColor = AppColors.errorLight;
+      statusIcon = Icons.cancel_rounded;
+      statusText = 'To\'lanmagan';
+    } else {
+      statusColor = AppColors.warning;
+      statusLightColor = AppColors.warningLight;
+      statusIcon = Icons.timelapse_rounded;
+      statusText = '${amountPaid.toStringAsFixed(0)} so\'m';
+    }
 
     return Material(
       color: Colors.transparent,
@@ -606,9 +632,7 @@ class _StudentCard extends StatelessWidget {
             color: AppColors.surfaceLight,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isPaid
-                  ? AppColors.success.withOpacity(0.3)
-                  : AppColors.error.withOpacity(0.3),
+              color: statusColor.withOpacity(0.3),
               width: 2,
             ),
             boxShadow: [
@@ -625,9 +649,7 @@ class _StudentCard extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: isPaid
-                      ? AppColors.success.withOpacity(0.1)
-                      : AppColors.error.withOpacity(0.1),
+                  color: statusLightColor,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Center(
@@ -638,7 +660,7 @@ class _StudentCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: isPaid ? AppColors.success : AppColors.error,
+                      color: statusColor,
                     ),
                   ),
                 ),
@@ -660,31 +682,24 @@ class _StudentCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: isPaid
-                            ? AppColors.successLight
-                            : AppColors.errorLight,
+                        color: statusLightColor,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            isPaid
-                                ? Icons.check_circle_rounded
-                                : Icons.cancel_rounded,
+                            statusIcon,
                             size: 14,
-                            color: isPaid ? AppColors.success : AppColors.error,
+                            color: statusColor,
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            isPaid
-                                ? '${groupInfo.amountPaidThisMonth!.toStringAsFixed(0)} so\'m'
-                                : 'To\'lanmagan',
+                            statusText,
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color:
-                                  isPaid ? AppColors.success : AppColors.error,
+                              color: statusColor,
                             ),
                           ),
                         ],

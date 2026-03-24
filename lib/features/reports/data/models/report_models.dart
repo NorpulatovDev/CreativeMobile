@@ -91,10 +91,12 @@ class MonthlyReport {
   final double actualRevenue;
   final double collectionRate;
   final int totalPayments;
-  final int studentsWhoPaid;
+  final int studentsWhoFullyPaid;
+  final int studentsWhoPartiallyPaid;
   final int studentsWhoDidNotPay;
   final List<GroupMonthlyStats> groupStats;
   final List<StudentPaymentStatus> unpaidStudents;
+  final List<StudentPaymentStatus> partialPaymentStudents;
   final AttendanceStats attendanceStats;
 
   const MonthlyReport({
@@ -107,10 +109,12 @@ class MonthlyReport {
     required this.actualRevenue,
     required this.collectionRate,
     required this.totalPayments,
-    required this.studentsWhoPaid,
+    required this.studentsWhoFullyPaid,
+    required this.studentsWhoPartiallyPaid,
     required this.studentsWhoDidNotPay,
     required this.groupStats,
     required this.unpaidStudents,
+    required this.partialPaymentStudents,
     required this.attendanceStats,
   });
 
@@ -159,6 +163,7 @@ class StudentPaymentStatus {
   final int groupId;
   final String groupName;
   final double amountDue;
+  final double amountPaid;
   final bool hasPaid;
 
   const StudentPaymentStatus({
@@ -169,6 +174,7 @@ class StudentPaymentStatus {
     required this.groupId,
     required this.groupName,
     required this.amountDue,
+    required this.amountPaid,
     required this.hasPaid,
   });
 

@@ -291,9 +291,11 @@ class _MonthlyReportTabState extends State<MonthlyReportTab> with AutomaticKeepA
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: ReportStatCard(title: 'To\'lagan', value: '${report.studentsWhoPaid}', subtitle: 'o\'quvchi', icon: Icons.check_circle_rounded, color: AppColors.success)),
-            const SizedBox(width: 12),
-            Expanded(child: ReportStatCard(title: 'To\'lamagan', value: '${report.studentsWhoDidNotPay}', subtitle: 'o\'quvchi', icon: Icons.schedule_rounded, color: AppColors.warning)),
+            Expanded(child: ReportStatCard(title: 'To\'liq', value: '${report.studentsWhoFullyPaid}', subtitle: 'o\'quvchi', icon: Icons.check_circle_rounded, color: AppColors.success)),
+            const SizedBox(width: 8),
+            Expanded(child: ReportStatCard(title: 'Qisman', value: '${report.studentsWhoPartiallyPaid}', subtitle: 'o\'quvchi', icon: Icons.timelapse_rounded, color: AppColors.primary)),
+            const SizedBox(width: 8),
+            Expanded(child: ReportStatCard(title: 'Yo\'q', value: '${report.studentsWhoDidNotPay}', subtitle: 'o\'quvchi', icon: Icons.cancel_rounded, color: AppColors.error)),
           ],
         ),
         const SizedBox(height: 12),
@@ -314,11 +316,17 @@ class _MonthlyReportTabState extends State<MonthlyReportTab> with AutomaticKeepA
         else
           ...report.groupStats.map((group) => _GroupStatsCard(group: group)),
 
+        if (report.partialPaymentStudents.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          SectionHeader(title: 'Qisman to\'lagan o\'quvchilar', count: report.partialPaymentStudents.length),
+          const SizedBox(height: 12),
+          ...report.partialPaymentStudents.map((student) => _UnpaidStudentCard(student: student, isPartial: true)),
+        ],
         if (report.unpaidStudents.isNotEmpty) ...[
           const SizedBox(height: 24),
           SectionHeader(title: 'To\'lamagan o\'quvchilar', count: report.unpaidStudents.length),
           const SizedBox(height: 12),
-          ...report.unpaidStudents.map((student) => _UnpaidStudentCard(student: student)),
+          ...report.unpaidStudents.map((student) => _UnpaidStudentCard(student: student, isPartial: false)),
         ],
       ],
     );
@@ -377,18 +385,22 @@ class _GroupStatsCard extends StatelessWidget {
 
 class _UnpaidStudentCard extends StatelessWidget {
   final StudentPaymentStatus student;
+  final bool isPartial;
 
-  const _UnpaidStudentCard({required this.student});
+  const _UnpaidStudentCard({required this.student, this.isPartial = false});
 
   @override
   Widget build(BuildContext context) {
+    final color = isPartial ? AppColors.primary : AppColors.error;
+    final lightBgColor = color.withOpacity(0.1);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.error.withOpacity(0.2)),
+        border: Border.all(color: color.withOpacity(0.2)),
         boxShadow: [BoxShadow(color: AppColors.neutral900.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 2))],
       ),
       child: Row(
@@ -396,8 +408,8 @@ class _UnpaidStudentCard extends StatelessWidget {
           Container(
             width: 44,
             height: 44,
-            decoration: BoxDecoration(color: AppColors.error.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-            child: Center(child: Text(student.studentName.isNotEmpty ? student.studentName[0].toUpperCase() : '?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.error))),
+            decoration: BoxDecoration(color: lightBgColor, borderRadius: BorderRadius.circular(12)),
+            child: Center(child: Text(student.studentName.isNotEmpty ? student.studentName[0].toUpperCase() : '?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: color))),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -415,16 +427,26 @@ class _UnpaidStudentCard extends StatelessWidget {
                     Text(student.parentPhoneNumber, style: TextStyle(fontSize: 11, color: AppColors.neutral400)),
                   ],
                 ),
+                if (isPartial) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.payments_outlined, size: 12, color: AppColors.success),
+                      const SizedBox(width: 4),
+                      Text('To\'langan: ${student.amountPaid.toStringAsFixed(0)} so\'m', style: TextStyle(fontSize: 11, color: AppColors.success)),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(color: AppColors.errorLight, borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(color: lightBgColor, borderRadius: BorderRadius.circular(10)),
             child: Column(
               children: [
-                Text('${student.amountDue.toStringAsFixed(0)}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.error)),
-                Text('so\'m', style: TextStyle(fontSize: 10, color: AppColors.error)),
+                Text('${student.amountDue.toStringAsFixed(0)}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
+                Text('qarz', style: TextStyle(fontSize: 10, color: color)),
               ],
             ),
           ),

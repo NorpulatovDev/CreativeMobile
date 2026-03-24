@@ -82,12 +82,17 @@ MonthlyReport _$MonthlyReportFromJson(Map<String, dynamic> json) =>
       actualRevenue: (json['actualRevenue'] as num).toDouble(),
       collectionRate: (json['collectionRate'] as num).toDouble(),
       totalPayments: (json['totalPayments'] as num).toInt(),
-      studentsWhoPaid: (json['studentsWhoPaid'] as num).toInt(),
+      studentsWhoFullyPaid: (json['studentsWhoFullyPaid'] as num).toInt(),
+      studentsWhoPartiallyPaid: (json['studentsWhoPartiallyPaid'] as num)
+          .toInt(),
       studentsWhoDidNotPay: (json['studentsWhoDidNotPay'] as num).toInt(),
       groupStats: (json['groupStats'] as List<dynamic>)
           .map((e) => GroupMonthlyStats.fromJson(e as Map<String, dynamic>))
           .toList(),
       unpaidStudents: (json['unpaidStudents'] as List<dynamic>)
+          .map((e) => StudentPaymentStatus.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      partialPaymentStudents: (json['partialPaymentStudents'] as List<dynamic>)
           .map((e) => StudentPaymentStatus.fromJson(e as Map<String, dynamic>))
           .toList(),
       attendanceStats: AttendanceStats.fromJson(
@@ -106,10 +111,12 @@ Map<String, dynamic> _$MonthlyReportToJson(MonthlyReport instance) =>
       'actualRevenue': instance.actualRevenue,
       'collectionRate': instance.collectionRate,
       'totalPayments': instance.totalPayments,
-      'studentsWhoPaid': instance.studentsWhoPaid,
+      'studentsWhoFullyPaid': instance.studentsWhoFullyPaid,
+      'studentsWhoPartiallyPaid': instance.studentsWhoPartiallyPaid,
       'studentsWhoDidNotPay': instance.studentsWhoDidNotPay,
       'groupStats': instance.groupStats,
       'unpaidStudents': instance.unpaidStudents,
+      'partialPaymentStudents': instance.partialPaymentStudents,
       'attendanceStats': instance.attendanceStats,
     };
 
@@ -149,6 +156,7 @@ StudentPaymentStatus _$StudentPaymentStatusFromJson(
   groupId: (json['groupId'] as num).toInt(),
   groupName: json['groupName'] as String,
   amountDue: (json['amountDue'] as num).toDouble(),
+  amountPaid: (json['amountPaid'] as num).toDouble(),
   hasPaid: json['hasPaid'] as bool,
 );
 
@@ -162,6 +170,7 @@ Map<String, dynamic> _$StudentPaymentStatusToJson(
   'groupId': instance.groupId,
   'groupName': instance.groupName,
   'amountDue': instance.amountDue,
+  'amountPaid': instance.amountPaid,
   'hasPaid': instance.hasPaid,
 };
 
