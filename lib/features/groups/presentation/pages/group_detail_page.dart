@@ -460,6 +460,7 @@ class _GroupDetailPageState extends State<GroupDetailPage>
               student: student,
               groupInfo: groupInfo,
               onTap: () => context.push('${Routes.students}/${student.id}'),
+              onLongPress: () => _confirmRemoveStudent(student),
             ),
           );
         },
@@ -509,6 +510,43 @@ class _GroupDetailPageState extends State<GroupDetailPage>
             child: _PaymentItemCard(payment: payment),
           );
         },
+      ),
+    );
+  }
+
+  void _confirmRemoveStudent(StudentModel student) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('O\'quvchini chiqarish'),
+        content: Text(
+          '${student.fullName} guruhdan chiqarilsinmi?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Bekor qilish'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final failure = await getIt<EnrollmentRepository>()
+                  .removeStudentFromGroup(student.id, widget.groupId);
+              if (!mounted) return;
+              if (failure != null) {
+                _showSnackBar(
+                    'Xatolik yuz berdi', AppColors.error, Icons.error_outline);
+              } else {
+                _showSnackBar('${student.fullName} guruhdan chiqarildi',
+                    AppColors.success, Icons.check_circle_outline);
+                _loadData();
+              }
+            },
+            child: const Text('Chiqarish'),
+          ),
+        ],
       ),
     );
   }
@@ -584,11 +622,13 @@ class _StudentCard extends StatelessWidget {
   final StudentModel student;
   final GroupInfo groupInfo;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   const _StudentCard({
     required this.student,
     required this.groupInfo,
     required this.onTap,
+    required this.onLongPress,
   });
 
   @override
@@ -625,6 +665,7 @@ class _StudentCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.all(16),

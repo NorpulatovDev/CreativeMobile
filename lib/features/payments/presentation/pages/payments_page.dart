@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/services/sms_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
 import '../../../enrollments/data/repositories/enrollment_repository.dart';
 import '../../../groups/data/models/group_model.dart';
 import '../../../groups/data/repositories/group_repository.dart';
+import '../../../students/data/models/student_model.dart';
 import '../../../students/data/repositories/student_repository.dart';
 import '../../data/models/payment_model.dart';
 import '../bloc/payment_bloc.dart';
@@ -374,6 +375,9 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
   bool _loadingStudents = false;
   bool _submitting = false;
   bool get isEditing => widget.payment != null;
+  StudentModel? _pendingStudent;
+  String? _pendingAmount;
+  String? _pendingMonth;
 
   int? _selectedGroupId;
   int? _selectedStudentId;
@@ -448,24 +452,35 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
 
   Future<void> _sendPaymentSMS(String phoneNumber, String studentName, String groupName, String amount, String month) async {
     final monthFormatted = _formatMonth(month);
-    final message = Uri.encodeComponent(
-      "Assalomu alaykum!\nCreative O‘quv Markazi ma’muriyati sizga ma’lum qiladiki, ${studentName}ning $monthFormatted oyi uchun $amount so'm to'lovi qabul qilindi.\nRahmat!",
-    );
-    
-    final smsUri = Uri.parse('sms:$phoneNumber?body=$message');
-    
-    try {
-      if (await canLaunchUrl(smsUri)) {
-        await launchUrl(smsUri);
-      }
-    } catch (e) {
-      // Silently fail
-    }
+    final message =
+        "Assalomu alaykum!\nCreative O’quv Markazi ma’muriyati sizga ma’lum qiladiki, ${studentName}ning $monthFormatted oyi uchun $amount so’m to’lovi qabul qilindi.\nRahmat!";
+    await getIt<SmsService>().send(phoneNumber, message);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return BlocListener<PaymentBloc, PaymentState>(
+      listener: (context, state) {
+        if (state is PaymentActionSuccess && _pendingStudent != null) {
+          final student = _pendingStudent!;
+          final amount = _pendingAmount!;
+          final month = _pendingMonth!;
+          _pendingStudent = null;
+          _pendingAmount = null;
+          _pendingMonth = null;
+          getIt<SmsService>().send(
+            student.parentPhoneNumber,
+            "Assalomu alaykum!\nCreative O'quv Markazi ma'muriyati sizga ma'lum qiladiki, ${student.fullName}ning ${_formatMonth(month)} oyi uchun $amount so'm to'lovi qabul qilindi.\nRahmat!",
+          );
+          Navigator.pop(context);
+        } else if (state is PaymentError && _pendingStudent != null) {
+          _pendingStudent = null;
+          _pendingAmount = null;
+          _pendingMonth = null;
+          setState(() => _submitting = false);
+        }
+      },
+      child: Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 400),
@@ -570,6 +585,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -589,27 +605,19 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
             paidForMonth: _selectedMonth,
           ));
         } else {
-          // Get student data for SMS
-          final (student, error) = await getIt<StudentRepository>().getById(_selectedStudentId!);
-          
+          final (student, _) = await getIt<StudentRepository>().getById(_selectedStudentId!);
+          if (student != null) {
+            _pendingStudent = student;
+            _pendingAmount = _amountController.text.trim();
+            _pendingMonth = _selectedMonth;
+          }
           bloc.add(PaymentCreate(
             studentId: _selectedStudentId!,
             groupId: _selectedGroupId!,
             amount: double.parse(_amountController.text.trim()),
             paidForMonth: _selectedMonth,
           ));
-          
-          // Send SMS only for new payments
-          if (student != null && error == null) {
-            final selectedGroup = _groups.firstWhere((g) => g.id == _selectedGroupId);
-            await _sendPaymentSMS(
-              student.parentPhoneNumber,
-              student.fullName,
-              selectedGroup.name,
-              _amountController.text.trim(),
-              _selectedMonth,
-            );
-          }
+          return; // BlocListener will pop after PaymentActionSuccess
         }
         
         Navigator.pop(context);

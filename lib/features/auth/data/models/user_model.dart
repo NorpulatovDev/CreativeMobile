@@ -5,14 +5,20 @@ part 'user_model.g.dart';
 
 @JsonSerializable()
 class UserModel extends Equatable {
+  final int adminId;
   final String username;
   final String role;
-  final String token;
+  final String accessToken;
+  final int? branchId;
+  final String? branchName;
 
   const UserModel({
+    required this.adminId,
     required this.username,
     required this.role,
-    required this.token,
+    required this.accessToken,
+    this.branchId,
+    this.branchName,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) =>
@@ -21,5 +27,5 @@ class UserModel extends Equatable {
   Map<String, dynamic> toJson() => _$UserModelToJson(this);
 
   @override
-  List<Object?> get props => [username, role, token];
+  List<Object?> get props => [adminId, username, role, accessToken, branchId, branchName];
 }

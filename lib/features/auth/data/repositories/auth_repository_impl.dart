@@ -24,13 +24,24 @@ class AuthRepositoryImpl implements AuthRepository {
         LoginRequest(username: username, password: password),
       );
 
-      final user = UserModel(
+      await _tokenStorage.saveToken(response.accessToken);
+      await _tokenStorage.saveRefreshToken(response.refreshToken);
+      await _tokenStorage.saveUserData(
+        adminId: response.adminId,
         username: response.username,
         role: response.role,
-        token: response.token,
+        branchId: response.branchId,
+        branchName: response.branchName,
       );
 
-      await _tokenStorage.saveToken(response.token);
+      final user = UserModel(
+        adminId: response.adminId,
+        username: response.username,
+        role: response.role,
+        accessToken: response.accessToken,
+        branchId: response.branchId,
+        branchName: response.branchName,
+      );
 
       return (user, null);
     } on DioException catch (e) {
@@ -50,28 +61,32 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<UserModel?> getCurrentUser() async {
-    final token = await _tokenStorage.getToken();
-    if (token == null) return null;
+    final accessToken = await _tokenStorage.getToken();
+    if (accessToken == null) return null;
 
-    // Decode JWT to get user info (simple implementation)
-    try {
-      final parts = token.split('.');
-      if (parts.length != 3) return null;
+    final userData = await _tokenStorage.getUserData();
+    if (userData == null) return null;
 
-      // For now, return a basic user since we have a valid token
-      // In production, you might want to call a /me endpoint
-      return UserModel(
-        username: 'admin', // Could decode from JWT
-        role: 'ADMIN',
-        token: token,
-      );
-    } catch (_) {
-      return null;
-    }
+    return UserModel(
+      adminId: userData['adminId'] as int,
+      username: userData['username'] as String,
+      role: userData['role'] as String,
+      accessToken: accessToken,
+      branchId: userData['branchId'] as int?,
+      branchName: userData['branchName'] as String?,
+    );
   }
 
   @override
   Future<void> logout() async {
-    await _tokenStorage.deleteToken();
+    final refreshToken = await _tokenStorage.getRefreshToken();
+    if (refreshToken != null) {
+      try {
+        await _remoteDataSource.logout(refreshToken);
+      } catch (_) {
+        // Best-effort server-side revocation; always clear local state
+      }
+    }
+    await _tokenStorage.deleteAll();
   }
 }

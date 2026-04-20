@@ -9,6 +9,7 @@ import '../offline/sync_queue.dart';
 import '../offline/sync_status_cubit.dart';
 import '../offline/temp_id_generator.dart';
 import '../router/app_router.dart';
+import '../services/sms_service.dart';
 import '../storage/token_storage.dart';
 
 // Auth
@@ -236,6 +237,9 @@ Future<void> configureDependencies() async {
   getIt.registerSingleton<SyncStatusCubit>(
     SyncStatusCubit(connectivity: getIt(), syncEngine: getIt()),
   );
+
+  // SMS
+  getIt.registerSingleton<SmsService>(SmsService());
 
   // Router
   getIt.registerSingleton<AppRouter>(AppRouter(getIt()));

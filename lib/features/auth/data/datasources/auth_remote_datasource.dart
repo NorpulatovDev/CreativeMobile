@@ -5,6 +5,8 @@ import '../models/models.dart';
 
 abstract class AuthRemoteDataSource {
   Future<LoginResponse> login(LoginRequest request);
+  Future<LoginResponse> refreshToken(String refreshToken);
+  Future<void> logout(String refreshToken);
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
@@ -28,6 +30,39 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       }
 
       return LoginResponse.fromJson(response.data!);
+    } on DioException {
+      rethrow;
+    }
+  }
+
+  @override
+  Future<LoginResponse> refreshToken(String refreshToken) async {
+    try {
+      final response = await _apiClient.post<Map<String, dynamic>>(
+        '/auth/refresh',
+        data: {'refreshToken': refreshToken},
+      );
+
+      if (response.data == null) {
+        throw DioException(
+          requestOptions: response.requestOptions,
+          message: 'Empty response from server',
+        );
+      }
+
+      return LoginResponse.fromJson(response.data!);
+    } on DioException {
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> logout(String refreshToken) async {
+    try {
+      await _apiClient.post<void>(
+        '/auth/logout',
+        data: {'refreshToken': refreshToken},
+      );
     } on DioException {
       rethrow;
     }
