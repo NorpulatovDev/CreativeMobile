@@ -460,7 +460,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
   @override
   Widget build(BuildContext context) {
     return BlocListener<PaymentBloc, PaymentState>(
-      listener: (context, state) {
+      listener: (context, state) async {
         if (state is PaymentActionSuccess && _pendingStudent != null) {
           final student = _pendingStudent!;
           final amount = _pendingAmount!;
@@ -468,11 +468,27 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
           _pendingStudent = null;
           _pendingAmount = null;
           _pendingMonth = null;
-          getIt<SmsService>().send(
+          final messenger = ScaffoldMessenger.of(context);
+          final smsResult = await getIt<SmsService>().send(
             student.parentPhoneNumber,
             "Assalomu alaykum!\nCreative O'quv Markazi ma'muriyati sizga ma'lum qiladiki, ${student.fullName}ning ${_formatMonth(month)} oyi uchun $amount so'm to'lovi qabul qilindi.\nRahmat!",
           );
+          if (!context.mounted) return;
           Navigator.pop(context);
+          messenger.clearSnackBars();
+          if (smsResult == SmsResult.sent) {
+            messenger.showSnackBar(const SnackBar(
+              content: Text("To'lov saqlandi va SMS yuborildi"),
+              backgroundColor: Colors.green,
+            ));
+          } else {
+            messenger.showSnackBar(SnackBar(
+              content: Text(smsResult == SmsResult.permissionDenied
+                  ? "To'lov saqlandi, lekin SMS ruxsati berilmagan"
+                  : "To'lov saqlandi, SMS yuborilmadi"),
+              backgroundColor: Colors.orange,
+            ));
+          }
         } else if (state is PaymentError && _pendingStudent != null) {
           _pendingStudent = null;
           _pendingAmount = null;
