@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -50,6 +51,7 @@ class _SmsPermissionGateState extends State<SmsPermissionGate> with WidgetsBindi
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) return widget.child;
     if (_checking) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (_status.isGranted) return widget.child;
     return _PermissionBlockScreen(
