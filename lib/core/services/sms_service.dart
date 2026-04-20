@@ -1,7 +1,10 @@
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class SmsService {
   static const _channel = MethodChannel('com.example.creative/sms');
+
+  Future<PermissionStatus> requestPermission() => Permission.sms.request();
 
   Future<SmsResult> send(String phone, String message) async {
     final cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');

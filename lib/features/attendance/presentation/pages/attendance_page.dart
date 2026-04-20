@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/sms_service.dart';
+import '../../../../core/widgets/sms_permission_gate.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
 import '../../../enrollments/data/repositories/enrollment_repository.dart';
 import '../../../groups/data/models/group_model.dart';
@@ -17,9 +18,11 @@ class AttendancePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => getIt<AttendanceBloc>(),
-      child: const AttendanceView(),
+    return SmsPermissionGate(
+      child: BlocProvider(
+        create: (_) => getIt<AttendanceBloc>(),
+        child: const AttendanceView(),
+      ),
     );
   }
 }
