@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:creative/features/inquiries/presentation/pages/inquiries_page.dart';
@@ -418,450 +417,235 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<AuthBloc, AuthState>(
-      builder: (context, state) {
-        final user = state is AuthAuthenticated ? state.user : null;
-        return Scaffold(
-          body: CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                expandedHeight: 120,
-                floating: false,
-                pinned: true,
-                backgroundColor: AppColors.surfaceLight,
-                surfaceTintColor: Colors.transparent,
-                flexibleSpace: FlexibleSpaceBar(
-                  titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
-                  title: const Text(
-                    'Boshqaruv paneli',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.neutral900,
-                    ),
-                  ),
-                  background: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          AppColors.primaryContainer.withOpacity(0.3),
-                          AppColors.surfaceLight,
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                actions: [
-                  IconButton(
-                    icon: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.neutral100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.person_outline_rounded, size: 20),
-                    ),
-                    tooltip: 'O\'qituvchilar',
-                    onPressed: () => context.push(Routes.teachers),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.errorLight,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.logout_rounded,
-                        size: 20,
-                        color: AppColors.error,
-                      ),
-                    ),
-                    tooltip: 'Chiqish',
-                    onPressed: () {
-                      getIt<AuthBloc>().add(AuthLogout());
-                    },
-                  ),
-                  const SizedBox(width: 16),
-                ],
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.all(20),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    _WelcomeCard(
-                      username: user?.username ?? 'Foydalanuvchi',
-                      role: user?.role ?? 'N/A',
-                    ),
-                    const SizedBox(height: 28),
-                    const _SectionTitle(title: 'Tezkor amallar'),
-                    const SizedBox(height: 16),
-                    _QuickActionsGrid(),
-                    const SizedBox(height: 28),
-                    const _SectionTitle(title: 'Boshqaruv'),
-                    const SizedBox(height: 16),
-                    _ManagementList(),
-                  ]),
-                ),
-              ),
-            ],
+    return Scaffold(
+      backgroundColor: AppColors.backgroundLight,
+      body: CustomScrollView(
+        slivers: [
+          const SliverToBoxAdapter(child: _HomeHeader()),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                const _PageGrid(),
+                const SizedBox(height: 16),
+                const _TeachersCard(),
+              ]),
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  final String title;
-
-  const _SectionTitle({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: AppColors.neutral800,
-          ),
-    );
-  }
-}
-
-class _WelcomeCard extends StatelessWidget {
-  final String username;
-  final String role;
-
-  const _WelcomeCard({required this.username, required this.role});
+class _HomeHeader extends StatelessWidget {
+  const _HomeHeader();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [AppColors.gradientStart, AppColors.gradientEnd],
         ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Center(
-              child: Text(
-                username.isNotEmpty ? username[0].toUpperCase() : 'F',
-                style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Xush kelibsiz! 👋',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  username,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    role,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickActionsGrid extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final actions = [
-      _QuickAction(
-        icon: Icons.contact_phone_rounded,
-        label: 'So\'rovlar',
-        color: const Color(0xFF3B82F6),
-        bgColor: const Color(0xFFDBeafe),
-        route: Routes.inquiries,
-      ),
-      _QuickAction(
-        icon: Icons.group_add_rounded,
-        label: 'Yangi guruh',
-        color: AppColors.primary,
-        bgColor: AppColors.cardBlue,
-        route: Routes.groups,
-      ),
-      _QuickAction(
-        icon: Icons.person_add_rounded,
-        label: 'Yangi o\'quvchi',
-        color: AppColors.success,
-        bgColor: AppColors.cardGreen,
-        route: Routes.students,
-      ),
-      _QuickAction(
-        icon: Icons.fact_check_rounded,
-        label: 'Davomat',
-        color: AppColors.warning,
-        bgColor: AppColors.cardOrange,
-        route: Routes.attendance,
-      ),
-      _QuickAction(
-        icon: Icons.add_card_rounded,
-        label: 'To\'lov',
-        color: const Color(0xFF8B5CF6),
-        bgColor: AppColors.cardPurple,
-        route: Routes.payments,
-      ),
-      _QuickAction(
-        icon: Icons.analytics_rounded,
-        label: 'Hisobotlar',
-        color: const Color(0xFF06B6D4),
-        bgColor: AppColors.cardCyan,
-        route: Routes.reports,
-      ),
-    ];
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.4,
-      ),
-      itemCount: actions.length,
-      itemBuilder: (context, index) {
-        final action = actions[index];
-        return _QuickActionCard(action: action);
-      },
-    );
-  }
-}
-
-class _QuickAction {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final Color bgColor;
-  final String route;
-
-  const _QuickAction({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.bgColor,
-    required this.route,
-  });
-}
-
-class _QuickActionCard extends StatelessWidget {
-  final _QuickAction action;
-
-  const _QuickActionCard({required this.action});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => context.go(action.route),
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: action.bgColor,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: action.color.withOpacity(0.1)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: action.color.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(action.icon, color: action.color, size: 24),
-              ),
-              Text(
-                action.label,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.neutral800,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ManagementList extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _ManagementItem(
-          icon: Icons.person_rounded,
-          title: 'O\'qituvchilar',
-          subtitle: 'O\'qituvchilarni boshqarish',
-          color: AppColors.primary,
-          onTap: () => context.push(Routes.teachers),
-        ),
-        const SizedBox(height: 12),
-        _ManagementItem(
-          icon: Icons.groups_rounded,
-          title: 'Guruhlar',
-          subtitle: 'Guruhlar va ro\'yxatdan o\'tkazish',
-          color: AppColors.success,
-          onTap: () => context.go(Routes.groups),
-        ),
-        const SizedBox(height: 12),
-        _ManagementItem(
-          icon: Icons.school_rounded,
-          title: 'O\'quvchilar',
-          subtitle: 'O\'quvchilar ma\'lumotlari',
-          color: AppColors.warning,
-          onTap: () => context.go(Routes.students),
-        ),
-      ],
-    );
-  }
-}
-
-class _ManagementItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ManagementItem({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceLight,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.neutral200.withOpacity(0.5)),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.neutral900.withOpacity(0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           child: Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(icon, color: color),
+                child: const Icon(Icons.school_rounded, color: Colors.white, size: 24),
               ),
-              const SizedBox(width: 16),
-              Expanded(
+              const SizedBox(width: 14),
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                      'Creative',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: -0.3),
                     ),
-                    const SizedBox(height: 2),
                     Text(
-                      subtitle,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.neutral500,
-                          ),
+                      "O'quv Markazi",
+                      style: TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w400),
                     ),
                   ],
                 ),
               ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.neutral400,
+              GestureDetector(
+                onTap: () => getIt<AuthBloc>().add(AuthLogout()),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.logout_rounded, color: Colors.white, size: 20),
+                ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PageData {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final String route;
+
+  const _PageData({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.route,
+  });
+}
+
+class _PageGrid extends StatelessWidget {
+  static const _items = [
+    _PageData(icon: Icons.contact_phone_rounded, label: "So'rovlar",    color: Color(0xFF3B82F6), route: Routes.inquiries),
+    _PageData(icon: Icons.groups_rounded,         label: "Guruhlar",     color: AppColors.primary, route: Routes.groups),
+    _PageData(icon: Icons.school_rounded,         label: "O'quvchilar",  color: AppColors.success, route: Routes.students),
+    _PageData(icon: Icons.fact_check_rounded,     label: "Davomat",      color: AppColors.warning, route: Routes.attendance),
+    _PageData(icon: Icons.payment_rounded,        label: "To'lovlar",    color: Color(0xFF8B5CF6), route: Routes.payments),
+    _PageData(icon: Icons.analytics_rounded,      label: "Hisobotlar",   color: Color(0xFF06B6D4), route: Routes.reports),
+  ];
+
+  const _PageGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.88,
+      ),
+      itemCount: _items.length,
+      itemBuilder: (context, index) => _PageCard(data: _items[index]),
+    );
+  }
+}
+
+class _PageCard extends StatelessWidget {
+  final _PageData data;
+
+  const _PageCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.go(data.route),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: data.color.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(data.icon, color: data.color, size: 26),
+            ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                data.label,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.neutral700),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TeachersCard extends StatelessWidget {
+  const _TeachersCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.push(Routes.teachers),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.person_rounded, color: AppColors.primary, size: 26),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "O'qituvchilar",
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.neutral800),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    "O'qituvchilarni boshqarish",
+                    style: TextStyle(fontSize: 13, color: AppColors.neutral500),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.neutral400),
+          ],
         ),
       ),
     );
