@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:creative/features/inquiries/presentation/pages/inquiries_page.dart';
@@ -8,6 +9,8 @@ import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/groups/presentation/pages/group_detail_page.dart';
 import '../../features/groups/presentation/pages/groups_page.dart';
+import '../../features/payments/presentation/bloc/payment_bloc.dart';
+import '../../features/payments/presentation/dialogs/payment_form_dialog.dart';
 import '../../features/payments/presentation/pages/payments_page.dart';
 import '../../features/reports/presentation/pages/reports_page.dart';
 import '../../features/students/presentation/pages/student_detail_page.dart';
@@ -330,20 +333,6 @@ class _MainScaffoldState extends State<MainScaffold> {
                   isSelected: _currentIndex == 2,
                   onTap: () => context.go(Routes.students),
                 ),
-                _NavItem(
-                  icon: Icons.fact_check_outlined,
-                  selectedIcon: Icons.fact_check_rounded,
-                  label: 'Davomat',
-                  isSelected: _currentIndex == 3,
-                  onTap: () => context.go(Routes.attendance),
-                ),
-                _NavItem(
-                  icon: Icons.payment_outlined,
-                  selectedIcon: Icons.payment_rounded,
-                  label: 'To\'lovlar',
-                  isSelected: _currentIndex == 4,
-                  onTap: () => context.go(Routes.payments),
-                ),
               ],
             ),
           ),
@@ -355,8 +344,6 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _getIndexFromLocation(String location) {
     if (location.startsWith(Routes.groups)) return 1;
     if (location.startsWith(Routes.students)) return 2;
-    if (location.startsWith(Routes.attendance)) return 3;
-    if (location.startsWith(Routes.payments)) return 4;
     return 0;
   }
 }
@@ -427,8 +414,6 @@ class HomePage extends StatelessWidget {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 const _PageGrid(),
-                const SizedBox(height: 16),
-                const _TeachersCard(),
               ]),
             ),
           ),
@@ -506,30 +491,43 @@ class _PageData {
   final IconData icon;
   final String label;
   final Color color;
-  final String route;
+  final String? route;
+  final void Function(BuildContext)? onTap;
 
   const _PageData({
     required this.icon,
     required this.label,
     required this.color,
-    required this.route,
+    this.route,
+    this.onTap,
   });
 }
 
 class _PageGrid extends StatelessWidget {
-  static const _items = [
-    _PageData(icon: Icons.contact_phone_rounded, label: "So'rovlar",    color: Color(0xFF3B82F6), route: Routes.inquiries),
-    _PageData(icon: Icons.groups_rounded,         label: "Guruhlar",     color: AppColors.primary, route: Routes.groups),
-    _PageData(icon: Icons.school_rounded,         label: "O'quvchilar",  color: AppColors.success, route: Routes.students),
-    _PageData(icon: Icons.fact_check_rounded,     label: "Davomat",      color: AppColors.warning, route: Routes.attendance),
-    _PageData(icon: Icons.payment_rounded,        label: "To'lovlar",    color: Color(0xFF8B5CF6), route: Routes.payments),
-    _PageData(icon: Icons.analytics_rounded,      label: "Hisobotlar",   color: Color(0xFF06B6D4), route: Routes.reports),
-  ];
-
   const _PageGrid();
+
+  static void _showQuickPayment(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => BlocProvider(
+        create: (_) => getIt<PaymentBloc>(),
+        child: const PaymentFormDialog(),
+      ),
+    );
+  }
+
+  static List<_PageData> _buildItems() => [
+    _PageData(icon: Icons.contact_phone_rounded, label: "So'rovlar",       color: Color(0xFF3B82F6), route: Routes.inquiries),
+    _PageData(icon: Icons.groups_rounded,         label: "Guruhlar",        color: AppColors.primary, route: Routes.groups),
+    _PageData(icon: Icons.school_rounded,         label: "O'quvchilar",     color: AppColors.success, route: Routes.students),
+    _PageData(icon: Icons.analytics_rounded,      label: "Hisobotlar",      color: Color(0xFF06B6D4), route: Routes.reports),
+    _PageData(icon: Icons.person_rounded,         label: "O'qituvchilar",   color: AppColors.warning, onTap: (ctx) => ctx.push(Routes.teachers)),
+    _PageData(icon: Icons.add_card_rounded,       label: "To'lov qo'shish", color: Color(0xFF8B5CF6), onTap: _showQuickPayment),
+  ];
 
   @override
   Widget build(BuildContext context) {
+    final items = _buildItems();
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -539,8 +537,8 @@ class _PageGrid extends StatelessWidget {
         crossAxisSpacing: 12,
         childAspectRatio: 0.88,
       ),
-      itemCount: _items.length,
-      itemBuilder: (context, index) => _PageCard(data: _items[index]),
+      itemCount: items.length,
+      itemBuilder: (context, index) => _PageCard(data: items[index]),
     );
   }
 }
@@ -553,7 +551,7 @@ class _PageCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => context.go(data.route),
+      onTap: () => data.onTap != null ? data.onTap!(context) : context.go(data.route!),
       child: Container(
         decoration: BoxDecoration(
           color: AppColors.surfaceLight,
@@ -589,62 +587,6 @@ class _PageCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TeachersCard extends StatelessWidget {
-  const _TeachersCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => context.push(Routes.teachers),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceLight,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.person_rounded, color: AppColors.primary, size: 26),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "O'qituvchilar",
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.neutral800),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    "O'qituvchilarni boshqarish",
-                    style: TextStyle(fontSize: 13, color: AppColors.neutral500),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.neutral400),
           ],
         ),
       ),

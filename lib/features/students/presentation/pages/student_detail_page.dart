@@ -13,7 +13,7 @@ import '../../../groups/data/models/group_model.dart';
 import '../../../groups/data/repositories/group_repository.dart';
 import '../../../payments/data/models/payment_model.dart';
 import '../../../payments/data/repositories/payment_repository.dart';
-import '../../../payments/presentation/pages/payments_page.dart';
+import '../../../payments/presentation/dialogs/payment_form_dialog.dart';
 import '../../data/models/student_model.dart';
 import '../../data/repositories/student_repository.dart';
 

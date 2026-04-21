@@ -12,6 +12,7 @@ import 'core/widgets/sync_status_banner.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 
 void main() async {
+  
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Hive for offline storage
