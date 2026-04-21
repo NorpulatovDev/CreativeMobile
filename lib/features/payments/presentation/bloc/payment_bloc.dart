@@ -4,6 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../data/models/payment_model.dart';
 import '../../data/repositories/payment_repository.dart';
 
+// ignore_for_file: constant_identifier_names
+const _kPageSize = 20;
+
 // Events
 abstract class PaymentEvent extends Equatable {
   const PaymentEvent();
@@ -13,6 +16,15 @@ abstract class PaymentEvent extends Equatable {
 }
 
 class PaymentLoadAll extends PaymentEvent {}
+
+class PaymentSearch extends PaymentEvent {
+  final String query;
+  const PaymentSearch(this.query);
+  @override
+  List<Object?> get props => [query];
+}
+
+class PaymentLoadMore extends PaymentEvent {}
 
 class PaymentLoadByStudent extends PaymentEvent {
   final int studentId;
@@ -91,11 +103,13 @@ class PaymentLoading extends PaymentState {}
 
 class PaymentLoaded extends PaymentState {
   final List<PaymentModel> payments;
+  final bool hasMore;
+  final bool isLoadingMore;
 
-  const PaymentLoaded(this.payments);
+  const PaymentLoaded(this.payments, {this.hasMore = false, this.isLoadingMore = false});
 
   @override
-  List<Object?> get props => [payments];
+  List<Object?> get props => [payments, hasMore, isLoadingMore];
 }
 
 class PaymentError extends PaymentState {
@@ -120,14 +134,56 @@ class PaymentActionSuccess extends PaymentState {
 class PaymentBloc extends Bloc<PaymentEvent, PaymentState> {
   final PaymentRepository _repository;
   List<PaymentModel> _payments = [];
+  String _currentQuery = '';
+  int _currentPage = 0;
+  bool _hasMore = false;
 
   PaymentBloc(this._repository) : super(PaymentInitial()) {
     on<PaymentLoadAll>(_onLoadAll);
+    on<PaymentSearch>(_onSearch);
+    on<PaymentLoadMore>(_onLoadMore);
     on<PaymentLoadByStudent>(_onLoadByStudent);
     on<PaymentLoadByGroup>(_onLoadByGroup);
     on<PaymentCreate>(_onCreate);
     on<PaymentUpdate>(_onUpdate);
     on<PaymentDelete>(_onDelete);
+  }
+
+  Future<void> _onSearch(
+    PaymentSearch event,
+    Emitter<PaymentState> emit,
+  ) async {
+    _currentQuery = event.query;
+    _currentPage = 0;
+    emit(PaymentLoading());
+    final (result, failure) = await _repository.search(event.query, 0, _kPageSize);
+    if (failure != null) {
+      emit(PaymentError(failure.message));
+    } else {
+      _payments = result?.content ?? [];
+      _hasMore = (_currentPage + 1) < (result?.totalPages ?? 0);
+      _currentPage = 1;
+      emit(PaymentLoaded(_payments, hasMore: _hasMore));
+    }
+  }
+
+  Future<void> _onLoadMore(
+    PaymentLoadMore event,
+    Emitter<PaymentState> emit,
+  ) async {
+    if (!_hasMore) return;
+    final current = state;
+    if (current is PaymentLoaded && current.isLoadingMore) return;
+    emit(PaymentLoaded(_payments, hasMore: _hasMore, isLoadingMore: true));
+    final (result, failure) = await _repository.search(_currentQuery, _currentPage, _kPageSize);
+    if (failure != null) {
+      emit(PaymentLoaded(_payments, hasMore: _hasMore));
+    } else {
+      _payments = [..._payments, ...(result?.content ?? [])];
+      _hasMore = (_currentPage + 1) < (result?.totalPages ?? 0);
+      _currentPage++;
+      emit(PaymentLoaded(_payments, hasMore: _hasMore));
+    }
   }
 
   Future<void> _onLoadAll(
@@ -140,6 +196,7 @@ class PaymentBloc extends Bloc<PaymentEvent, PaymentState> {
       emit(PaymentError(failure.message));
     } else {
       _payments = payments ?? [];
+      _hasMore = false;
       emit(PaymentLoaded(_payments));
     }
   }
@@ -154,6 +211,7 @@ class PaymentBloc extends Bloc<PaymentEvent, PaymentState> {
       emit(PaymentError(failure.message));
     } else {
       _payments = payments ?? [];
+      _hasMore = false;
       emit(PaymentLoaded(_payments));
     }
   }
@@ -168,6 +226,7 @@ class PaymentBloc extends Bloc<PaymentEvent, PaymentState> {
       emit(PaymentError(failure.message));
     } else {
       _payments = payments ?? [];
+      _hasMore = false;
       emit(PaymentLoaded(_payments));
     }
   }
@@ -187,11 +246,11 @@ class PaymentBloc extends Bloc<PaymentEvent, PaymentState> {
     );
     if (failure != null) {
       emit(PaymentError(failure.message));
-      emit(PaymentLoaded(_payments));
+      emit(PaymentLoaded(_payments, hasMore: _hasMore));
     } else {
       _payments = [payment!, ..._payments];
       emit(const PaymentActionSuccess('To\'lov muvaffaqiyatli qo\'shildi'));
-      emit(PaymentLoaded(_payments));
+      emit(PaymentLoaded(_payments, hasMore: _hasMore));
     }
   }
 
@@ -211,11 +270,11 @@ class PaymentBloc extends Bloc<PaymentEvent, PaymentState> {
     );
     if (failure != null) {
       emit(PaymentError(failure.message));
-      emit(PaymentLoaded(_payments));
+      emit(PaymentLoaded(_payments, hasMore: _hasMore));
     } else {
       _payments = _payments.map((p) => p.id == event.id ? payment! : p).toList();
       emit(const PaymentActionSuccess('To\'lov muvaffaqiyatli yangilandi'));
-      emit(PaymentLoaded(_payments));
+      emit(PaymentLoaded(_payments, hasMore: _hasMore));
     }
   }
 
@@ -227,11 +286,11 @@ class PaymentBloc extends Bloc<PaymentEvent, PaymentState> {
     final failure = await _repository.delete(event.id);
     if (failure != null) {
       emit(PaymentError(failure.message));
-      emit(PaymentLoaded(_payments));
+      emit(PaymentLoaded(_payments, hasMore: _hasMore));
     } else {
       _payments = _payments.where((p) => p.id != event.id).toList();
       emit(const PaymentActionSuccess('To\'lov muvaffaqiyatli o\'chirildi'));
-      emit(PaymentLoaded(_payments));
+      emit(PaymentLoaded(_payments, hasMore: _hasMore));
     }
   }
 }

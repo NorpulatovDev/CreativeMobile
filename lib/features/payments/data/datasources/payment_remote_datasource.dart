@@ -1,8 +1,10 @@
 import '../../../../core/api/api_client.dart';
+import '../../../../core/models/paged_response.dart';
 import '../models/payment_model.dart';
 
 abstract class PaymentRemoteDataSource {
   Future<List<PaymentModel>> getAll();
+  Future<PagedResponse<PaymentModel>> search(String query, int page, int size);
   Future<List<PaymentModel>> getByStudentId(int studentId);
   Future<List<PaymentModel>> getByGroupId(int groupId);
   Future<List<PaymentModel>> getByGroupIdAndMonth(int groupId, int year, int month);
@@ -16,6 +18,15 @@ class PaymentRemoteDataSourceImpl implements PaymentRemoteDataSource {
   final ApiClient _apiClient;
 
   PaymentRemoteDataSourceImpl(this._apiClient);
+
+  @override
+  Future<PagedResponse<PaymentModel>> search(String query, int page, int size) async {
+    final response = await _apiClient.get<Map<String, dynamic>>(
+      '/api/payments/search',
+      queryParameters: {'search': query, 'page': page, 'size': size},
+    );
+    return PagedResponse.fromJson(response.data!, PaymentModel.fromJson);
+  }
 
   @override
   Future<List<PaymentModel>> getAll() async {

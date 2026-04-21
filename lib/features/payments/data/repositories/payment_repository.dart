@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/error/failures.dart';
+import '../../../../core/models/paged_response.dart';
 import '../../../../core/network/connectivity_service.dart';
 import '../../../../core/offline/sync_queue.dart';
 import '../../../../core/offline/temp_id_generator.dart';
@@ -11,6 +12,7 @@ import '../models/payment_model.dart';
 
 abstract class PaymentRepository {
   Future<(List<PaymentModel>?, Failure?)> getAll();
+  Future<(PagedResponse<PaymentModel>?, Failure?)> search(String query, int page, int size);
   Future<(List<PaymentModel>?, Failure?)> getByStudentId(int studentId);
   Future<(List<PaymentModel>?, Failure?)> getByGroupId(int groupId);
   Future<(List<PaymentModel>?, Failure?)> getByGroupIdAndMonth(
@@ -35,6 +37,18 @@ class PaymentRepositoryImpl implements PaymentRepository {
     this._syncQueue,
     this._tempIdGenerator,
   );
+
+  @override
+  Future<(PagedResponse<PaymentModel>?, Failure?)> search(String query, int page, int size) async {
+    try {
+      final result = await _remoteDataSource.search(query, page, size);
+      return (result, null);
+    } on DioException catch (e) {
+      return (null, ServerFailure(e.message ?? 'Failed to search payments'));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
+  }
 
   @override
   Future<(List<PaymentModel>?, Failure?)> getAll() async {

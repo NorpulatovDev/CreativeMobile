@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/error/failures.dart';
+import '../../../../core/models/paged_response.dart';
 import '../../../../core/network/connectivity_service.dart';
 import '../../../../core/offline/sync_queue.dart';
 import '../../../../core/offline/temp_id_generator.dart';
@@ -11,6 +12,7 @@ import '../models/student_model.dart';
 
 abstract class StudentRepository {
   Future<(List<StudentModel>?, Failure?)> getAll();
+  Future<(PagedResponse<StudentModel>?, Failure?)> search(String query, int page, int size);
   Future<(List<StudentModel>?, Failure?)> getByGroupId(int groupId,
       {int? year, int? month});
   Future<(StudentModel?, Failure?)> getById(int id);
@@ -33,6 +35,18 @@ class StudentRepositoryImpl implements StudentRepository {
     this._syncQueue,
     this._tempIdGenerator,
   );
+
+  @override
+  Future<(PagedResponse<StudentModel>?, Failure?)> search(String query, int page, int size) async {
+    try {
+      final result = await _remoteDataSource.search(query, page, size);
+      return (result, null);
+    } on DioException catch (e) {
+      return (null, ServerFailure(e.message ?? 'Failed to search students'));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
+  }
 
   @override
   Future<(List<StudentModel>?, Failure?)> getAll() async {

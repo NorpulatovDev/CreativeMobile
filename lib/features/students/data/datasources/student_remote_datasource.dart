@@ -1,8 +1,10 @@
 import '../../../../core/api/api_client.dart';
+import '../../../../core/models/paged_response.dart';
 import '../models/student_model.dart';
 
 abstract class StudentRemoteDataSource {
   Future<List<StudentModel>> getAll();
+  Future<PagedResponse<StudentModel>> search(String query, int page, int size);
   Future<List<StudentModel>> getByGroupId(int groupId, {int? year, int? month});
   Future<StudentModel> getById(int id);
   Future<StudentModel> create(StudentRequest request);
@@ -14,6 +16,15 @@ class StudentRemoteDataSourceImpl implements StudentRemoteDataSource {
   final ApiClient _apiClient;
 
   StudentRemoteDataSourceImpl(this._apiClient);
+
+  @override
+  Future<PagedResponse<StudentModel>> search(String query, int page, int size) async {
+    final response = await _apiClient.get<Map<String, dynamic>>(
+      '/api/students/search',
+      queryParameters: {'search': query, 'page': page, 'size': size},
+    );
+    return PagedResponse.fromJson(response.data!, StudentModel.fromJson);
+  }
 
   @override
   Future<List<StudentModel>> getAll() async {

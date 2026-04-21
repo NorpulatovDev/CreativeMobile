@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/router/routes.dart';
+import '../../../../core/services/sms_service.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../attendance/data/models/attendance_model.dart';
+import '../../../attendance/presentation/bloc/attendance_bloc.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
 import '../../../enrollments/data/repositories/enrollment_repository.dart';
 import '../../../payments/data/models/payment_model.dart';
 import '../../../payments/data/repositories/payment_repository.dart';
+import '../../../payments/presentation/bloc/payment_bloc.dart';
 import '../../../payments/presentation/pages/payments_page.dart';
 import '../../../students/data/models/student_model.dart';
 import '../../../students/data/repositories/student_repository.dart';
@@ -26,6 +31,7 @@ class GroupDetailPage extends StatefulWidget {
 class _GroupDetailPageState extends State<GroupDetailPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  late AttendanceBloc _attendanceBloc;
   GroupModel? _group;
   List<StudentModel> _students = [];
   List<PaymentModel> _payments = [];
@@ -37,8 +43,10 @@ class _GroupDetailPageState extends State<GroupDetailPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() => setState(() {}));
     _selectedMonth = DateTime.now();
+    _attendanceBloc = getIt<AttendanceBloc>();
     _loadData();
   }
 
@@ -62,12 +70,18 @@ class _GroupDetailPageState extends State<GroupDetailPage>
         _payments = payments ?? [];
         _loading = false;
       });
+      _attendanceBloc.add(AttendanceLoadByGroupAndMonth(
+        groupId: widget.groupId,
+        year: year,
+        month: month,
+      ));
     }
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _attendanceBloc.close();
     super.dispose();
   }
 
@@ -292,12 +306,9 @@ class _GroupDetailPageState extends State<GroupDetailPage>
                   indicatorWeight: 3,
                   labelStyle: const TextStyle(fontWeight: FontWeight.w600),
                   tabs: const [
-                    Tab(
-                        text: 'O\'quvchilar',
-                        icon: Icon(Icons.people_rounded, size: 20)),
-                    Tab(
-                        text: 'To\'lovlar',
-                        icon: Icon(Icons.payment_rounded, size: 20)),
+                    Tab(text: 'O\'quvchilar', icon: Icon(Icons.people_rounded, size: 20)),
+                    Tab(text: 'To\'lovlar', icon: Icon(Icons.payment_rounded, size: 20)),
+                    Tab(text: 'Davomat', icon: Icon(Icons.fact_check_rounded, size: 20)),
                   ],
                 ),
               ),
@@ -371,6 +382,12 @@ class _GroupDetailPageState extends State<GroupDetailPage>
                 children: [
                   _buildStudentsTab(),
                   _buildPaymentsTab(),
+                  _DavomatTab(
+                    bloc: _attendanceBloc,
+                    groupId: widget.groupId,
+                    year: _selectedMonth.year,
+                    month: _selectedMonth.month,
+                  ),
                 ],
               ),
             ),
@@ -381,22 +398,32 @@ class _GroupDetailPageState extends State<GroupDetailPage>
         onPressed: () {
           if (_tabController.index == 0) {
             _showEnrollStudentDialog();
-          } else {
+          } else if (_tabController.index == 1) {
             _showAddPaymentDialog();
+          } else {
+            _showTakeAttendanceSheet();
           }
         },
-        backgroundColor:
-            _tabController.index == 0 ? AppColors.success : const Color(0xFF8B5CF6),
+        backgroundColor: _tabController.index == 0
+            ? AppColors.success
+            : _tabController.index == 1
+                ? const Color(0xFF8B5CF6)
+                : const Color(0xFF0891B2),
         foregroundColor: Colors.white,
         elevation: 4,
         icon: Icon(_tabController.index == 0
             ? Icons.person_add_rounded
-            : Icons.add_card_rounded),
+            : _tabController.index == 1
+                ? Icons.add_card_rounded
+                : Icons.edit_calendar_rounded),
         label: Text(
-            _tabController.index == 0
-                ? 'O\'quvchi qo\'shish'
-                : 'To\'lov qo\'shish',
-            style: const TextStyle(fontWeight: FontWeight.w600)),
+          _tabController.index == 0
+              ? 'O\'quvchi qo\'shish'
+              : _tabController.index == 1
+                  ? 'To\'lov qo\'shish'
+                  : 'Davomat olish',
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
       ),
     );
   }
@@ -551,6 +578,23 @@ class _GroupDetailPageState extends State<GroupDetailPage>
     );
   }
 
+  void _showTakeAttendanceSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => BlocProvider.value(
+        value: _attendanceBloc,
+        child: _TakeAttendanceSheet(
+          groupId: widget.groupId,
+          groupName: _group?.name ?? '',
+          initialDate: _selectedMonth,
+          students: _students,
+        ),
+      ),
+    );
+  }
+
   void _showEnrollStudentDialog() {
     showDialog(
       context: context,
@@ -574,8 +618,10 @@ class _GroupDetailPageState extends State<GroupDetailPage>
 
     showDialog(
       context: context,
-      builder: (dialogContext) =>
-          PaymentFormDialog(preselectedGroupId: widget.groupId),
+      builder: (dialogContext) => BlocProvider(
+        create: (_) => getIt<PaymentBloc>(),
+        child: PaymentFormDialog(preselectedGroupId: widget.groupId),
+      ),
     ).then((_) => _loadData());
   }
 }
@@ -1037,6 +1083,655 @@ class _EnrollStudentDialogState extends State<_EnrollStudentDialog> {
                       ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Davomat Tab ─────────────────────────────────────────────────────────────
+
+class _DavomatTab extends StatefulWidget {
+  final AttendanceBloc bloc;
+  final int groupId;
+  final int year;
+  final int month;
+
+  const _DavomatTab({
+    required this.bloc,
+    required this.groupId,
+    required this.year,
+    required this.month,
+  });
+
+  @override
+  State<_DavomatTab> createState() => _DavomatTabState();
+}
+
+class _DavomatTabState extends State<_DavomatTab> {
+  @override
+  void didUpdateWidget(_DavomatTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.year != widget.year || oldWidget.month != widget.month) {
+      widget.bloc.add(AttendanceLoadByGroupAndMonth(
+        groupId: widget.groupId,
+        year: widget.year,
+        month: widget.month,
+      ));
+    }
+  }
+
+  void _showDetailSheet(BuildContext context, String dateKey, List<AttendanceModel> records) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => BlocProvider.value(
+        value: widget.bloc,
+        child: _AttendanceDetailSheet(dateKey: dateKey, records: records),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocProvider.value(
+      value: widget.bloc,
+      child: BlocBuilder<AttendanceBloc, AttendanceState>(
+        builder: (context, state) {
+          if (state is AttendanceLoading) {
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFF0891B2)),
+            );
+          }
+
+          if (state is AttendanceLoaded) {
+            if (state.attendances.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0891B2).withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.fact_check_outlined, size: 48, color: Color(0xFF0891B2)),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Davomat olinmagan',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: AppColors.neutral700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Bu oy uchun davomat hali olinmagan',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppColors.neutral500,
+                          ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            // Group records by date string
+            final Map<String, List<AttendanceModel>> byDate = {};
+            for (final r in state.attendances) {
+              final key =
+                  '${r.date.year}-${r.date.month.toString().padLeft(2, '0')}-${r.date.day.toString().padLeft(2, '0')}';
+              byDate.putIfAbsent(key, () => []).add(r);
+            }
+            final sortedKeys = byDate.keys.toList()..sort((a, b) => b.compareTo(a));
+
+            return RefreshIndicator(
+              color: const Color(0xFF0891B2),
+              onRefresh: () async {
+                widget.bloc.add(AttendanceLoadByGroupAndMonth(
+                  groupId: widget.groupId,
+                  year: widget.year,
+                  month: widget.month,
+                ));
+              },
+              child: ListView.builder(
+                padding: const EdgeInsets.all(20),
+                itemCount: sortedKeys.length,
+                itemBuilder: (context, index) {
+                  final key = sortedKeys[index];
+                  final records = byDate[key]!;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _DateAttendanceCard(
+                      dateKey: key,
+                      records: records,
+                      onTap: () => _showDetailSheet(context, key, records),
+                    ),
+                  );
+                },
+              ),
+            );
+          }
+
+          if (state is AttendanceError) {
+            return Center(
+              child: Text(state.message,
+                  style: TextStyle(color: AppColors.error)),
+            );
+          }
+
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+}
+
+// ─── Date Attendance Card ─────────────────────────────────────────────────────
+
+class _DateAttendanceCard extends StatelessWidget {
+  final String dateKey;
+  final List<AttendanceModel> records;
+  final VoidCallback onTap;
+
+  const _DateAttendanceCard({
+    required this.dateKey,
+    required this.records,
+    required this.onTap,
+  });
+
+  String _formatDate(String key) {
+    final parts = key.split('-');
+    final date = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+    const days = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'];
+    const months = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+    return '${date.day} ${months[date.month - 1]}, ${days[date.weekday - 1]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final presentCount = records.where((r) => r.status == AttendanceStatus.PRESENT).length;
+    final absentCount = records.where((r) => r.status == AttendanceStatus.ABSENT).length;
+    final total = records.length;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceLight,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.neutral200.withOpacity(0.5)),
+            boxShadow: [BoxShadow(color: AppColors.neutral900.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 2))],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0891B2).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Center(child: Icon(Icons.fact_check_rounded, color: Color(0xFF0891B2))),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _formatDate(dateKey),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _StatusBadge(count: presentCount, total: total, isPresent: true),
+                        const SizedBox(width: 8),
+                        _StatusBadge(count: absentCount, total: total, isPresent: false),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: AppColors.neutral400),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  final int count;
+  final int total;
+  final bool isPresent;
+
+  const _StatusBadge({required this.count, required this.total, required this.isPresent});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isPresent ? AppColors.success : AppColors.error;
+    final bg = isPresent ? AppColors.successLight : AppColors.errorLight;
+    final icon = isPresent ? Icons.check_circle_rounded : Icons.cancel_rounded;
+    final label = isPresent ? 'Keldi' : 'Kelmadi';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text('$count $label', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Take Attendance Sheet ────────────────────────────────────────────────────
+
+class _TakeAttendanceSheet extends StatefulWidget {
+  final int groupId;
+  final String groupName;
+  final DateTime initialDate;
+  final List<StudentModel> students;
+
+  const _TakeAttendanceSheet({
+    required this.groupId,
+    required this.groupName,
+    required this.initialDate,
+    required this.students,
+  });
+
+  @override
+  State<_TakeAttendanceSheet> createState() => _TakeAttendanceSheetState();
+}
+
+class _TakeAttendanceSheetState extends State<_TakeAttendanceSheet> {
+  late DateTime _selectedDate;
+  late final Map<int, StudentModel> _studentMap;
+  List<EnrollmentModel> _enrollments = [];
+  final Set<int> _absentIds = {};
+  bool _loading = true;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _selectedDate = DateTime(now.year, now.month, now.day);
+    _studentMap = {for (final s in widget.students) s.id: s};
+    _loadStudents();
+  }
+
+  Future<void> _loadStudents() async {
+    final (enrollments, _) = await getIt<EnrollmentRepository>().getGroupStudents(widget.groupId);
+    if (mounted) {
+      setState(() {
+        _enrollments = (enrollments ?? []).where((e) => e.active).toList();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) setState(() => _selectedDate = picked);
+  }
+
+  String _formatSelectedDate() {
+    const months = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+    return '${_selectedDate.day} ${months[_selectedDate.month - 1]} ${_selectedDate.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocListener<AttendanceBloc, AttendanceState>(
+      listener: (context, state) {
+        if (state is AttendanceActionSuccess) {
+          Navigator.pop(context);
+        } else if (state is AttendanceLoaded && _submitting) {
+          Navigator.pop(context);
+        } else if (state is AttendanceError && _submitting) {
+          setState(() => _submitting = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.message), backgroundColor: AppColors.error),
+          );
+        }
+      },
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surfaceLight,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.neutral300, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: const Color(0xFF0891B2).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.edit_calendar_rounded, color: Color(0xFF0891B2)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text('Davomat olish', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                    ),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: InkWell(
+                  onTap: _pickDate,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0891B2).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF0891B2).withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today_rounded, size: 18, color: Color(0xFF0891B2)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(_formatSelectedDate(),
+                              style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF0891B2))),
+                        ),
+                        const Icon(Icons.edit_rounded, size: 16, color: Color(0xFF0891B2)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Text('Barcha o\'quvchilar', style: TextStyle(fontSize: 13, color: AppColors.neutral500)),
+                    const Spacer(),
+                    if (!_loading)
+                      Text('${_enrollments.length - _absentIds.length} / ${_enrollments.length} keldi',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0891B2))),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Divider(height: 1),
+              Expanded(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator(color: Color(0xFF0891B2)))
+                    : _enrollments.isEmpty
+                        ? Center(child: Text('Bu guruhda o\'quvchi yo\'q', style: TextStyle(color: AppColors.neutral500)))
+                        : ListView.builder(
+                            controller: scrollController,
+                            itemCount: _enrollments.length,
+                            itemBuilder: (context, index) {
+                              final enrollment = _enrollments[index];
+                              final isAbsent = _absentIds.contains(enrollment.studentId);
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: isAbsent ? AppColors.errorLight : AppColors.successLight,
+                                  child: Text(
+                                    enrollment.studentName.isNotEmpty ? enrollment.studentName[0].toUpperCase() : '?',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: isAbsent ? AppColors.error : AppColors.success,
+                                    ),
+                                  ),
+                                ),
+                                title: Text(enrollment.studentName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                                trailing: GestureDetector(
+                                  onTap: () {
+                                    if (isAbsent) {
+                                      setState(() => _absentIds.remove(enrollment.studentId));
+                                    } else {
+                                      setState(() => _absentIds.add(enrollment.studentId));
+                                      final student = _studentMap[enrollment.studentId];
+                                      if (student != null) {
+                                        getIt<SmsService>().send(
+                                          student.parentPhoneNumber,
+                                          "Assalomu alaykum! ${student.fullName} bugun ${_formatSelectedDate()} kuni ${widget.groupName} darsiga kelmadi. Creative O'quv Markazi.",
+                                        );
+                                      }
+                                    }
+                                  },
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: isAbsent ? AppColors.errorLight : AppColors.successLight,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(isAbsent ? Icons.close_rounded : Icons.check_rounded,
+                                            size: 14, color: isAbsent ? AppColors.error : AppColors.success),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          isAbsent ? 'Kelmadi' : 'Keldi',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: isAbsent ? AppColors.error : AppColors.success,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 12 + MediaQuery.of(context).viewInsets.bottom),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _loading || _submitting || _enrollments.isEmpty
+                        ? null
+                        : () {
+                            setState(() => _submitting = true);
+                            context.read<AttendanceBloc>().add(AttendanceCreate(
+                              groupId: widget.groupId,
+                              date: _selectedDate,
+                              absentStudentIds: _absentIds.toList(),
+                            ));
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0891B2),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: _submitting
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Saqlash', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Attendance Detail Sheet ──────────────────────────────────────────────────
+
+class _AttendanceDetailSheet extends StatelessWidget {
+  final String dateKey;
+  final List<AttendanceModel> records;
+
+  const _AttendanceDetailSheet({required this.dateKey, required this.records});
+
+  String _formatDate() {
+    final parts = dateKey.split('-');
+    final date = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+    const days = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'];
+    const months = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+    return '${date.day} ${months[date.month - 1]} ${date.year}, ${days[date.weekday - 1]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final presentCount = records.where((r) => r.status == AttendanceStatus.PRESENT).length;
+    final absentCount = records.where((r) => r.status == AttendanceStatus.ABSENT).length;
+
+    return BlocListener<AttendanceBloc, AttendanceState>(
+      listener: (context, state) {
+        if (state is AttendanceError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.message), backgroundColor: AppColors.error),
+          );
+        }
+      },
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surfaceLight,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.only(bottom: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.neutral300, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: const Color(0xFF0891B2).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.fact_check_rounded, color: Color(0xFF0891B2)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_formatDate(), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            _StatusBadge(count: presentCount, total: records.length, isPresent: true),
+                            const SizedBox(width: 6),
+                            _StatusBadge(count: absentCount, total: records.length, isPresent: false),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+            BlocBuilder<AttendanceBloc, AttendanceState>(
+              builder: (context, state) {
+                final currentRecords = state is AttendanceLoaded
+                    ? state.attendances.where((a) {
+                        final key =
+                            '${a.date.year}-${a.date.month.toString().padLeft(2, '0')}-${a.date.day.toString().padLeft(2, '0')}';
+                        return key == dateKey;
+                      }).toList()
+                    : records;
+
+                return ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: currentRecords.length,
+                    itemBuilder: (context, index) {
+                      final record = currentRecords[index];
+                      final isPresent = record.status == AttendanceStatus.PRESENT;
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: isPresent ? AppColors.successLight : AppColors.errorLight,
+                          child: Text(
+                            record.studentName.isNotEmpty ? record.studentName[0].toUpperCase() : '?',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: isPresent ? AppColors.success : AppColors.error,
+                            ),
+                          ),
+                        ),
+                        title: Text(record.studentName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                        trailing: GestureDetector(
+                          onTap: () {
+                            context.read<AttendanceBloc>().add(AttendanceUpdateStatus(
+                              id: record.id,
+                              status: isPresent ? AttendanceStatus.ABSENT : AttendanceStatus.PRESENT,
+                            ));
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isPresent ? AppColors.successLight : AppColors.errorLight,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(isPresent ? Icons.check_rounded : Icons.close_rounded,
+                                    size: 14, color: isPresent ? AppColors.success : AppColors.error),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isPresent ? 'Keldi' : 'Kelmadi',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: isPresent ? AppColors.success : AppColors.error,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),

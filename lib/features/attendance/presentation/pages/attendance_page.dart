@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/sms_service.dart';
-import '../../../../core/widgets/sms_permission_gate.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
 import '../../../enrollments/data/repositories/enrollment_repository.dart';
 import '../../../groups/data/models/group_model.dart';
@@ -18,11 +17,9 @@ class AttendancePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SmsPermissionGate(
-      child: BlocProvider(
-        create: (_) => getIt<AttendanceBloc>(),
-        child: const AttendanceView(),
-      ),
+    return BlocProvider(
+      create: (_) => getIt<AttendanceBloc>(),
+      child: const AttendanceView(),
     );
   }
 }
@@ -329,8 +326,6 @@ class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
   List<EnrollmentModel> _enrollments = [];
   Map<int, StudentModel> _studentDetails = {};
   Map<int, bool> _attendanceStatus = {};
-  final Map<int, bool> _smsSentMap = {};
-  final Map<int, bool> _smsSendingMap = {};
   bool _loading = true;
 
   @override
@@ -366,34 +361,21 @@ class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
   }
 
   void _markAbsent(int studentId) {
-    setState(() {
-      _attendanceStatus[studentId] = false;
-      _smsSentMap.remove(studentId);
-      _smsSendingMap.remove(studentId);
-    });
+    setState(() => _attendanceStatus[studentId] = false);
+    _sendSms(studentId);
   }
 
   void _markPresent(int studentId) {
-    setState(() {
-      _attendanceStatus[studentId] = true;
-      _smsSentMap.remove(studentId);
-      _smsSendingMap.remove(studentId);
-    });
+    setState(() => _attendanceStatus[studentId] = true);
   }
 
   Future<void> _sendSms(int studentId) async {
     final student = _studentDetails[studentId];
     if (student == null) return;
-    setState(() => _smsSendingMap[studentId] = true);
     final dateStr = DateFormat('dd.MM.yyyy').format(DateTime.now());
     final message =
         "Hurmatli ota-ona,\nCreative O’quv Markazi ma’muriyati sizga ma’lum qiladiki, ${student.fullName} bugun ($dateStr) darsga kelmadi.\nIltimos, kelmaslik sababini bizga ma’lum qilishingizni so’raymiz.";
     await getIt<SmsService>().send(student.parentPhoneNumber, message);
-    if (!mounted) return;
-    setState(() {
-      _smsSendingMap[studentId] = false;
-      _smsSentMap[studentId] = true;
-    });
   }
 
   @override
@@ -478,8 +460,6 @@ class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
                               studentName: enrollment.studentName,
                               parentPhone: student?.parentPhoneNumber ?? '',
                               isPresent: isPresent,
-                              smsSent: _smsSentMap[enrollment.studentId] ?? false,
-                              smsSending: _smsSendingMap[enrollment.studentId] ?? false,
                               onTap: () {
                                 if (isPresent) {
                                   _markAbsent(enrollment.studentId);
@@ -487,7 +467,6 @@ class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
                                   _markPresent(enrollment.studentId);
                                 }
                               },
-                              onSendSms: () => _sendSms(enrollment.studentId),
                             );
                           },
                         ),
@@ -545,19 +524,13 @@ class _StudentAttendanceTile extends StatelessWidget {
   final String studentName;
   final String parentPhone;
   final bool isPresent;
-  final bool smsSent;
-  final bool smsSending;
   final VoidCallback onTap;
-  final VoidCallback? onSendSms;
 
   const _StudentAttendanceTile({
     required this.studentName,
     required this.parentPhone,
     required this.isPresent,
-    required this.smsSent,
-    required this.smsSending,
     required this.onTap,
-    this.onSendSms,
   });
 
   @override
@@ -623,52 +596,6 @@ class _StudentAttendanceTile extends StatelessWidget {
                   ],
                 ),
               ),
-              if (!isPresent) ...[
-                GestureDetector(
-                  onTap: smsSent ? null : onSendSms,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: smsSent
-                          ? Colors.green.withOpacity(0.12)
-                          : Colors.blue.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: smsSent
-                            ? Colors.green.withOpacity(0.4)
-                            : Colors.blue.withOpacity(0.4),
-                      ),
-                    ),
-                    child: smsSending
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                smsSent ? Icons.check_rounded : Icons.sms_outlined,
-                                size: 14,
-                                color: smsSent ? Colors.green : Colors.blue,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                smsSent ? 'Yuborildi' : 'SMS',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: smsSent ? Colors.green : Colors.blue,
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
               if (isPresent)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

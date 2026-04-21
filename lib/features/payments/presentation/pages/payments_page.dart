@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
@@ -5,12 +7,10 @@ import 'package:intl/intl.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/sms_service.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/widgets/sms_permission_gate.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
 import '../../../enrollments/data/repositories/enrollment_repository.dart';
 import '../../../groups/data/models/group_model.dart';
 import '../../../groups/data/repositories/group_repository.dart';
-import '../../../students/data/models/student_model.dart';
 import '../../../students/data/repositories/student_repository.dart';
 import '../../data/models/payment_model.dart';
 import '../bloc/payment_bloc.dart';
@@ -20,11 +20,9 @@ class PaymentsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SmsPermissionGate(
-      child: BlocProvider(
-        create: (_) => getIt<PaymentBloc>()..add(PaymentLoadAll()),
-        child: const PaymentsView(),
-      ),
+    return BlocProvider(
+      create: (_) => getIt<PaymentBloc>()..add(const PaymentSearch('')),
+      child: const PaymentsView(),
     );
   }
 }
@@ -38,12 +36,39 @@ class PaymentsView extends StatefulWidget {
 
 class _PaymentsViewState extends State<PaymentsView> {
   final _searchController = TextEditingController();
-  String _searchQuery = '';
+  final _scrollController = ScrollController();
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    if (pos.pixels >= pos.maxScrollExtent - 200) {
+      final state = context.read<PaymentBloc>().state;
+      if (state is PaymentLoaded && state.hasMore && !state.isLoadingMore) {
+        context.read<PaymentBloc>().add(PaymentLoadMore());
+      }
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) context.read<PaymentBloc>().add(PaymentSearch(value.trim()));
+    });
   }
 
   void _showSnackBar(String message, Color backgroundColor, IconData icon) {
@@ -69,6 +94,7 @@ class _PaymentsViewState extends State<PaymentsView> {
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
       body: CustomScrollView(
+        controller: _scrollController,
         slivers: [
           SliverAppBar(
             expandedHeight: 120,
@@ -98,12 +124,12 @@ class _PaymentsViewState extends State<PaymentsView> {
                 ),
                 child: TextField(
                   controller: _searchController,
-                  onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+                  onChanged: _onSearchChanged,
                   decoration: InputDecoration(
                     hintText: 'To\'lovlarni qidirish...',
                     hintStyle: TextStyle(color: AppColors.neutral400, fontWeight: FontWeight.w400),
                     prefixIcon: Icon(Icons.search_rounded, color: AppColors.neutral400),
-                    suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: Icon(Icons.close_rounded, color: AppColors.neutral400), onPressed: () { _searchController.clear(); setState(() => _searchQuery = ''); }) : null,
+                    suffixIcon: _searchController.text.isNotEmpty ? IconButton(icon: Icon(Icons.close_rounded, color: AppColors.neutral400), onPressed: () { _searchController.clear(); context.read<PaymentBloc>().add(const PaymentSearch('')); setState(() {}); }) : null,
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
@@ -127,16 +153,43 @@ class _PaymentsViewState extends State<PaymentsView> {
                 return const SliverFillRemaining(child: Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6))));
               }
               if (state is PaymentLoaded) {
-                final filteredPayments = _searchQuery.isEmpty ? state.payments : state.payments.where((p) => p.studentName.toLowerCase().contains(_searchQuery) || p.groupName.toLowerCase().contains(_searchQuery) || p.paidForMonth.contains(_searchQuery)).toList();
                 if (state.payments.isEmpty) {
-                  return SliverFillRemaining(child: _buildEmptyState(context));
-                }
-                if (filteredPayments.isEmpty) {
-                  return SliverFillRemaining(child: _buildNoResultsState(context));
+                  return SliverFillRemaining(
+                    child: _searchController.text.isEmpty
+                        ? _buildEmptyState(context)
+                        : _buildNoResultsState(context),
+                  );
                 }
                 return SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  sliver: SliverList(delegate: SliverChildBuilderDelegate((context, index) => Padding(padding: const EdgeInsets.only(bottom: 12), child: _PaymentCard(payment: filteredPayments[index])), childCount: filteredPayments.length)),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        if (index == state.payments.length) {
+                          if (state.isLoadingMore) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6), strokeWidth: 2)),
+                            );
+                          }
+                          if (!state.hasMore) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Center(
+                                child: Text('Hammasi yuklandi', style: TextStyle(color: AppColors.neutral400, fontSize: 13)),
+                              ),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _PaymentCard(payment: state.payments[index]),
+                        );
+                      },
+                      childCount: state.payments.length + 1,
+                    ),
+                  ),
                 );
               }
               return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -174,6 +227,7 @@ class _PaymentsViewState extends State<PaymentsView> {
       ),
     );
   }
+
 
   Widget _buildNoResultsState(BuildContext context) {
     return Center(
@@ -378,9 +432,6 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
   bool _loadingStudents = false;
   bool _submitting = false;
   bool get isEditing => widget.payment != null;
-  StudentModel? _pendingStudent;
-  String? _pendingAmount;
-  String? _pendingMonth;
 
   int? _selectedGroupId;
   int? _selectedStudentId;
@@ -463,39 +514,10 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
   @override
   Widget build(BuildContext context) {
     return BlocListener<PaymentBloc, PaymentState>(
-      listener: (context, state) async {
-        if (state is PaymentActionSuccess && _pendingStudent != null) {
-          final student = _pendingStudent!;
-          final amount = _pendingAmount!;
-          final month = _pendingMonth!;
-          _pendingStudent = null;
-          _pendingAmount = null;
-          _pendingMonth = null;
-          final messenger = ScaffoldMessenger.of(context);
-          final smsResult = await getIt<SmsService>().send(
-            student.parentPhoneNumber,
-            "Assalomu alaykum!\nCreative O'quv Markazi ma'muriyati sizga ma'lum qiladiki, ${student.fullName}ning ${_formatMonth(month)} oyi uchun $amount so'm to'lovi qabul qilindi.\nRahmat!",
-          );
-          if (!context.mounted) return;
+      listener: (context, state) {
+        if (state is PaymentActionSuccess) {
           Navigator.pop(context);
-          messenger.clearSnackBars();
-          if (smsResult == SmsResult.sent) {
-            messenger.showSnackBar(const SnackBar(
-              content: Text("To'lov saqlandi va SMS yuborildi"),
-              backgroundColor: Colors.green,
-            ));
-          } else {
-            messenger.showSnackBar(SnackBar(
-              content: Text(smsResult == SmsResult.permissionDenied
-                  ? "To'lov saqlandi, lekin SMS ruxsati berilmagan"
-                  : "To'lov saqlandi, SMS yuborilmadi"),
-              backgroundColor: Colors.orange,
-            ));
-          }
-        } else if (state is PaymentError && _pendingStudent != null) {
-          _pendingStudent = null;
-          _pendingAmount = null;
-          _pendingMonth = null;
+        } else if (state is PaymentError) {
           setState(() => _submitting = false);
         }
       },
@@ -624,18 +646,21 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
             paidForMonth: _selectedMonth,
           ));
         } else {
+          final amount = _amountController.text.trim();
+          final month = _selectedMonth;
           final (student, _) = await getIt<StudentRepository>().getById(_selectedStudentId!);
-          if (student != null) {
-            _pendingStudent = student;
-            _pendingAmount = _amountController.text.trim();
-            _pendingMonth = _selectedMonth;
-          }
           bloc.add(PaymentCreate(
             studentId: _selectedStudentId!,
             groupId: _selectedGroupId!,
-            amount: double.parse(_amountController.text.trim()),
-            paidForMonth: _selectedMonth,
+            amount: double.parse(amount),
+            paidForMonth: month,
           ));
+          if (student != null) {
+            await getIt<SmsService>().send(
+              student.parentPhoneNumber,
+              "Assalomu alaykum!\nCreative O'quv Markazi ma'muriyati sizga ma'lum qiladiki, ${student.fullName}ning ${_formatMonth(month)} oyi uchun $amount so'm to'lovi qabul qilindi.\nRahmat!",
+            );
+          }
           return; // BlocListener will pop after PaymentActionSuccess
         }
         

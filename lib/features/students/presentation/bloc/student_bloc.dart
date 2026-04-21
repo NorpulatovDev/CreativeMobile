@@ -6,6 +6,9 @@ import '../../../enrollments/data/repositories/enrollment_repository.dart';
 import '../../data/models/student_model.dart';
 import '../../data/repositories/student_repository.dart';
 
+// ignore_for_file: constant_identifier_names
+const _kPageSize = 20;
+
 // Events
 abstract class StudentEvent extends Equatable {
   const StudentEvent();
@@ -15,6 +18,15 @@ abstract class StudentEvent extends Equatable {
 }
 
 class StudentLoadAll extends StudentEvent {}
+
+class StudentSearch extends StudentEvent {
+  final String query;
+  const StudentSearch(this.query);
+  @override
+  List<Object?> get props => [query];
+}
+
+class StudentLoadMore extends StudentEvent {}
 
 class StudentLoadByGroup extends StudentEvent {
   final int groupId;
@@ -97,11 +109,13 @@ class StudentLoading extends StudentState {}
 
 class StudentLoaded extends StudentState {
   final List<StudentModel> students;
+  final bool hasMore;
+  final bool isLoadingMore;
 
-  const StudentLoaded(this.students);
+  const StudentLoaded(this.students, {this.hasMore = false, this.isLoadingMore = false});
 
   @override
-  List<Object?> get props => [students];
+  List<Object?> get props => [students, hasMore, isLoadingMore];
 }
 
 class StudentError extends StudentState {
@@ -126,14 +140,56 @@ class StudentActionSuccess extends StudentState {
 class StudentBloc extends Bloc<StudentEvent, StudentState> {
   final StudentRepository _repository;
   List<StudentModel> _students = [];
+  String _currentQuery = '';
+  int _currentPage = 0;
+  bool _hasMore = false;
 
   StudentBloc(this._repository) : super(StudentInitial()) {
     on<StudentLoadAll>(_onLoadAll);
+    on<StudentSearch>(_onSearch);
+    on<StudentLoadMore>(_onLoadMore);
     on<StudentLoadByGroup>(_onLoadByGroup);
     on<StudentCreate>(_onCreate);
     on<StudentCreateWithGroup>(_onCreateWithGroup);
     on<StudentUpdate>(_onUpdate);
     on<StudentDelete>(_onDelete);
+  }
+
+  Future<void> _onSearch(
+    StudentSearch event,
+    Emitter<StudentState> emit,
+  ) async {
+    _currentQuery = event.query;
+    _currentPage = 0;
+    emit(StudentLoading());
+    final (result, failure) = await _repository.search(event.query, 0, _kPageSize);
+    if (failure != null) {
+      emit(StudentError(failure.message));
+    } else {
+      _students = result?.content ?? [];
+      _hasMore = (_currentPage + 1) < (result?.totalPages ?? 0);
+      _currentPage = 1;
+      emit(StudentLoaded(_students, hasMore: _hasMore));
+    }
+  }
+
+  Future<void> _onLoadMore(
+    StudentLoadMore event,
+    Emitter<StudentState> emit,
+  ) async {
+    if (!_hasMore) return;
+    final current = state;
+    if (current is StudentLoaded && current.isLoadingMore) return;
+    emit(StudentLoaded(_students, hasMore: _hasMore, isLoadingMore: true));
+    final (result, failure) = await _repository.search(_currentQuery, _currentPage, _kPageSize);
+    if (failure != null) {
+      emit(StudentLoaded(_students, hasMore: _hasMore));
+    } else {
+      _students = [..._students, ...(result?.content ?? [])];
+      _hasMore = (_currentPage + 1) < (result?.totalPages ?? 0);
+      _currentPage++;
+      emit(StudentLoaded(_students, hasMore: _hasMore));
+    }
   }
 
   Future<void> _onLoadAll(
@@ -146,6 +202,7 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
       emit(StudentError(failure.message));
     } else {
       _students = students ?? [];
+      _hasMore = false;
       emit(StudentLoaded(_students));
     }
   }
@@ -160,6 +217,7 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
       emit(StudentError(failure.message));
     } else {
       _students = students ?? [];
+      _hasMore = false;
       emit(StudentLoaded(_students));
     }
   }
@@ -178,11 +236,11 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
     );
     if (failure != null) {
       emit(StudentError(failure.message));
-      emit(StudentLoaded(_students));
+      emit(StudentLoaded(_students, hasMore: _hasMore));
     } else {
       _students = [..._students, student!];
       emit(const StudentActionSuccess('O\'quvchi muvaffaqiyatli qo\'shildi'));
-      emit(StudentLoaded(_students));
+      emit(StudentLoaded(_students, hasMore: _hasMore));
     }
   }
 
@@ -200,7 +258,7 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
     );
     if (failure != null) {
       emit(StudentError(failure.message));
-      emit(StudentLoaded(_students));
+      emit(StudentLoaded(_students, hasMore: _hasMore));
       return;
     }
 
@@ -212,11 +270,10 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
         event.groupId!,
       );
       if (enrollFailure != null) {
-        // Student created but enrollment failed
         _students = [..._students, student];
         emit(StudentActionSuccess(
             'O\'quvchi qo\'shildi, lekin guruhga qo\'shib bo\'lmadi: ${enrollFailure.message}'));
-        emit(StudentLoaded(_students));
+        emit(StudentLoaded(_students, hasMore: _hasMore));
         return;
       }
     }
@@ -233,7 +290,7 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
         ? 'O\'quvchi qo\'shildi va guruhga birlashtrildi'
         : 'O\'quvchi muvaffaqiyatli qo\'shildi';
     emit(StudentActionSuccess(message));
-    emit(StudentLoaded(_students));
+    emit(StudentLoaded(_students, hasMore: _hasMore));
   }
 
   Future<void> _onUpdate(
@@ -251,12 +308,12 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
     );
     if (failure != null) {
       emit(StudentError(failure.message));
-      emit(StudentLoaded(_students));
+      emit(StudentLoaded(_students, hasMore: _hasMore));
     } else {
       _students =
           _students.map((s) => s.id == event.id ? student! : s).toList();
       emit(const StudentActionSuccess('O\'quvchi muvaffaqiyatli yangilandi'));
-      emit(StudentLoaded(_students));
+      emit(StudentLoaded(_students, hasMore: _hasMore));
     }
   }
 
@@ -268,11 +325,11 @@ class StudentBloc extends Bloc<StudentEvent, StudentState> {
     final failure = await _repository.delete(event.id);
     if (failure != null) {
       emit(StudentError(failure.message));
-      emit(StudentLoaded(_students));
+      emit(StudentLoaded(_students, hasMore: _hasMore));
     } else {
       _students = _students.where((s) => s.id != event.id).toList();
       emit(const StudentActionSuccess('O\'quvchi va barcha ma\'lumotlari o\'chirildi'));
-      emit(StudentLoaded(_students));
+      emit(StudentLoaded(_students, hasMore: _hasMore));
     }
   }
 }

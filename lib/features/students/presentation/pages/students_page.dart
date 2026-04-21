@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -18,7 +20,7 @@ class StudentsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => getIt<StudentBloc>()..add(StudentLoadAll()),
+      create: (_) => getIt<StudentBloc>()..add(const StudentSearch('')),
       child: const StudentsView(),
     );
   }
@@ -33,12 +35,39 @@ class StudentsView extends StatefulWidget {
 
 class _StudentsViewState extends State<StudentsView> {
   final _searchController = TextEditingController();
-  String _searchQuery = '';
+  final _scrollController = ScrollController();
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    if (pos.pixels >= pos.maxScrollExtent - 200) {
+      final state = context.read<StudentBloc>().state;
+      if (state is StudentLoaded && state.hasMore && !state.isLoadingMore) {
+        context.read<StudentBloc>().add(StudentLoadMore());
+      }
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) context.read<StudentBloc>().add(StudentSearch(value.trim()));
+    });
   }
 
   void _showSnackBar(String message, Color backgroundColor, IconData icon) {
@@ -64,6 +93,7 @@ class _StudentsViewState extends State<StudentsView> {
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
       body: CustomScrollView(
+        controller: _scrollController,
         slivers: [
           SliverAppBar(
             expandedHeight: 120,
@@ -113,8 +143,7 @@ class _StudentsViewState extends State<StudentsView> {
                 ),
                 child: TextField(
                   controller: _searchController,
-                  onChanged: (value) =>
-                      setState(() => _searchQuery = value.toLowerCase()),
+                  onChanged: _onSearchChanged,
                   decoration: InputDecoration(
                     hintText: 'O\'quvchilarni qidirish...',
                     hintStyle: TextStyle(
@@ -125,7 +154,7 @@ class _StudentsViewState extends State<StudentsView> {
                       Icons.search_rounded,
                       color: AppColors.neutral400,
                     ),
-                    suffixIcon: _searchQuery.isNotEmpty
+                    suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
                             icon: Icon(
                               Icons.close_rounded,
@@ -133,7 +162,7 @@ class _StudentsViewState extends State<StudentsView> {
                             ),
                             onPressed: () {
                               _searchController.clear();
-                              setState(() => _searchQuery = '');
+                              context.read<StudentBloc>().add(const StudentSearch(''));
                             },
                           )
                         : null,
@@ -175,20 +204,6 @@ class _StudentsViewState extends State<StudentsView> {
                 );
               }
               if (state is StudentLoaded) {
-                final filteredStudents = _searchQuery.isEmpty
-                    ? state.students
-                    : state.students
-                          .where(
-                            (s) =>
-                                s.fullName.toLowerCase().contains(
-                                  _searchQuery,
-                                ) ||
-                                s.parentName.toLowerCase().contains(
-                                  _searchQuery,
-                                ) ||
-                                s.parentPhoneNumber.contains(_searchQuery),
-                          )
-                          .toList();
                 if (state.students.isEmpty) {
                   return SliverFillRemaining(
                     child: Center(
@@ -198,62 +213,40 @@ class _StudentsViewState extends State<StudentsView> {
                           Container(
                             padding: const EdgeInsets.all(24),
                             decoration: BoxDecoration(
-                              color: AppColors.success.withOpacity(0.1),
+                              color: _searchController.text.isEmpty
+                                  ? AppColors.success.withOpacity(0.1)
+                                  : AppColors.neutral100,
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
-                              Icons.school_rounded,
+                              _searchController.text.isEmpty
+                                  ? Icons.school_rounded
+                                  : Icons.search_off_rounded,
                               size: 48,
-                              color: AppColors.success,
+                              color: _searchController.text.isEmpty
+                                  ? AppColors.success
+                                  : AppColors.neutral400,
                             ),
                           ),
                           const SizedBox(height: 24),
                           Text(
-                            'O\'quvchilar yo\'q',
+                            _searchController.text.isEmpty
+                                ? 'O\'quvchilar yo\'q'
+                                : 'Natija topilmadi',
                             style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(
                                   color: AppColors.neutral700,
                                   fontWeight: FontWeight.w600,
                                 ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Birinchi o\'quvchini qo\'shing',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(color: AppColors.neutral500),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-                if (filteredStudents.isEmpty) {
-                  return SliverFillRemaining(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: AppColors.neutral100,
-                              shape: BoxShape.circle,
+                          if (_searchController.text.isEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Birinchi o\'quvchini qo\'shing',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: AppColors.neutral500),
                             ),
-                            child: Icon(
-                              Icons.search_off_rounded,
-                              size: 48,
-                              color: AppColors.neutral400,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          Text(
-                            'Natija topilmadi',
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(
-                                  color: AppColors.neutral700,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
+                          ],
                         ],
                       ),
                     ),
@@ -263,17 +256,36 @@ class _StudentsViewState extends State<StudentsView> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, index) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _StudentCard(
-                          student: filteredStudents[index],
-                          onDelete: () => _showDeleteDialog(
-                            context,
-                            filteredStudents[index],
+                      (context, index) {
+                        if (index == state.students.length) {
+                          if (state.isLoadingMore) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: Center(child: CircularProgressIndicator(color: AppColors.success, strokeWidth: 2)),
+                            );
+                          }
+                          if (!state.hasMore) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Center(
+                                child: Text(
+                                  'Hammasi yuklandi',
+                                  style: TextStyle(color: AppColors.neutral400, fontSize: 13),
+                                ),
+                              ),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _StudentCard(
+                            student: state.students[index],
+                            onDelete: () => _showDeleteDialog(context, state.students[index]),
                           ),
-                        ),
-                      ),
-                      childCount: filteredStudents.length,
+                        );
+                      },
+                      childCount: state.students.length + 1,
                     ),
                   ),
                 );
