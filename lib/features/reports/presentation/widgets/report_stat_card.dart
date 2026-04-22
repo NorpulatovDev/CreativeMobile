@@ -2,10 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_theme.dart';
 
-/// A compact stat card used in report pages.
-///
-/// [horizontal] = false (default): icon + title in a row at top, then value + subtitle below.
-/// [horizontal] = true: icon on the left, title / value / subtitle stacked on the right.
 class ReportStatCard extends StatelessWidget {
   final String title;
   final String value;
@@ -13,6 +9,7 @@ class ReportStatCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final bool horizontal;
+  final VoidCallback? onTap;
 
   const ReportStatCard({
     super.key,
@@ -22,15 +19,16 @@ class ReportStatCard extends StatelessWidget {
     required this.icon,
     required this.color,
     this.horizontal = false,
+    this.onTap,
   });
 
   BoxDecoration get _cardDecoration => BoxDecoration(
         color: AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.neutral200.withOpacity(0.5)),
+        border: Border.all(color: AppColors.neutral200.withValues(alpha: 0.5)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.neutral900.withOpacity(0.03),
+            color: AppColors.neutral900.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -41,7 +39,7 @@ class ReportStatCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(padding),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(padding + 2),
       ),
       child: Icon(icon, size: iconSize, color: color),
@@ -50,24 +48,43 @@ class ReportStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (horizontal) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: _cardDecoration,
-        child: Row(
-          children: [
-            _iconBox(padding: 12, iconSize: 24),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontSize: 13, color: AppColors.neutral500),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
+    final content = horizontal ? _buildHorizontal() : _buildVertical();
+
+    if (onTap == null) return content;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: content,
+      ),
+    );
+  }
+
+  Widget _buildHorizontal() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _cardDecoration,
+      child: Row(
+        children: [
+          _iconBox(padding: 12, iconSize: 24),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.neutral500),
+                ),
+                const SizedBox(height: 4),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
                     value,
                     style: const TextStyle(
                       fontSize: 22,
@@ -75,52 +92,55 @@ class ReportStatCard extends StatelessWidget {
                       color: AppColors.neutral800,
                     ),
                   ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(fontSize: 12, color: AppColors.neutral500),
-                  ),
-                ],
-              ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.neutral500),
+                ),
+              ],
             ),
-          ],
-        ),
-      );
-    }
+          ),
+        ],
+      ),
+    );
+  }
 
-    // Vertical layout
+  Widget _buildVertical() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: _cardDecoration,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              _iconBox(),
-              const SizedBox(width: 10),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.neutral500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          _iconBox(),
+          const SizedBox(height: 8),
           Text(
-            value,
+            title,
             style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppColors.neutral800,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.neutral500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.neutral800,
+              ),
             ),
           ),
-          const SizedBox(height: 2),
           Text(
             subtitle,
-            style: const TextStyle(fontSize: 12, color: AppColors.neutral500),
+            style: const TextStyle(fontSize: 11, color: AppColors.neutral500),
           ),
         ],
       ),

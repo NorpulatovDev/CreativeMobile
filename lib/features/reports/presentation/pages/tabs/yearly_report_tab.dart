@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/widgets/app_widgets.dart';
+import '../../../../../core/utils/number_formatter.dart';
 import '../../../data/models/report_models.dart';
 import '../../bloc/report_bloc.dart';
 import '../../widgets/report_stat_card.dart';
@@ -265,7 +266,7 @@ class _TotalRevenueCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          Text('${report.totalRevenue.toStringAsFixed(0)}', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: Colors.white)),
+          Text(formatAmount(report.totalRevenue), style: TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: Colors.white)),
           Text('so\'m', style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.8))),
           const SizedBox(height: 12),
           Container(
@@ -319,7 +320,7 @@ class _MonthlyRevenueCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(color: AppColors.successLight, borderRadius: BorderRadius.circular(10)),
-            child: Text('${month.revenue.toStringAsFixed(0)} so\'m', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success)),
+            child: Text('${formatAmount(month.revenue)} so\'m', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success)),
           ),
         ],
       ),
@@ -426,7 +427,7 @@ class _TopGroupCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('${group.totalRevenue.toStringAsFixed(0)}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary)),
+              Text(formatAmount(group.totalRevenue), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary)),
               Text('${group.totalPayments} to\'lov', style: TextStyle(fontSize: 11, color: AppColors.neutral500)),
             ],
           ),

@@ -71,34 +71,39 @@ Map<String, dynamic> _$PaymentSummaryToJson(PaymentSummary instance) =>
       'paidForMonth': instance.paidForMonth,
     };
 
-MonthlyReport _$MonthlyReportFromJson(Map<String, dynamic> json) =>
-    MonthlyReport(
-      year: (json['year'] as num).toInt(),
-      month: (json['month'] as num).toInt(),
-      monthName: json['monthName'] as String,
-      totalActiveStudents: (json['totalActiveStudents'] as num).toInt(),
-      totalGroups: (json['totalGroups'] as num).toInt(),
-      expectedRevenue: (json['expectedRevenue'] as num).toDouble(),
-      actualRevenue: (json['actualRevenue'] as num).toDouble(),
-      collectionRate: (json['collectionRate'] as num).toDouble(),
-      totalPayments: (json['totalPayments'] as num).toInt(),
-      studentsWhoFullyPaid: (json['studentsWhoFullyPaid'] as num).toInt(),
-      studentsWhoPartiallyPaid: (json['studentsWhoPartiallyPaid'] as num)
-          .toInt(),
-      studentsWhoDidNotPay: (json['studentsWhoDidNotPay'] as num).toInt(),
-      groupStats: (json['groupStats'] as List<dynamic>)
-          .map((e) => GroupMonthlyStats.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      unpaidStudents: (json['unpaidStudents'] as List<dynamic>)
-          .map((e) => StudentPaymentStatus.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      partialPaymentStudents: (json['partialPaymentStudents'] as List<dynamic>)
-          .map((e) => StudentPaymentStatus.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      attendanceStats: AttendanceStats.fromJson(
-        json['attendanceStats'] as Map<String, dynamic>,
-      ),
-    );
+MonthlyReport _$MonthlyReportFromJson(
+  Map<String, dynamic> json,
+) => MonthlyReport(
+  year: (json['year'] as num).toInt(),
+  month: (json['month'] as num).toInt(),
+  monthName: json['monthName'] as String,
+  totalActiveStudents: (json['totalActiveStudents'] as num).toInt(),
+  totalGroups: (json['totalGroups'] as num).toInt(),
+  expectedRevenue: (json['expectedRevenue'] as num).toDouble(),
+  actualRevenue: (json['actualRevenue'] as num).toDouble(),
+  collectionRate: (json['collectionRate'] as num).toDouble(),
+  totalPayments: (json['totalPayments'] as num).toInt(),
+  studentsWhoFullyPaid: (json['studentsWhoFullyPaid'] as num).toInt(),
+  studentsWhoPartiallyPaid: (json['studentsWhoPartiallyPaid'] as num).toInt(),
+  studentsWhoDidNotPay: (json['studentsWhoDidNotPay'] as num).toInt(),
+  groupStats: (json['groupStats'] as List<dynamic>)
+      .map((e) => GroupMonthlyStats.fromJson(e as Map<String, dynamic>))
+      .toList(),
+  fullyPaidStudents:
+      (json['fullyPaidStudents'] as List<dynamic>?)
+          ?.map((e) => StudentPaymentStatus.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      [],
+  unpaidStudents: (json['unpaidStudents'] as List<dynamic>)
+      .map((e) => StudentPaymentStatus.fromJson(e as Map<String, dynamic>))
+      .toList(),
+  partialPaymentStudents: (json['partialPaymentStudents'] as List<dynamic>)
+      .map((e) => StudentPaymentStatus.fromJson(e as Map<String, dynamic>))
+      .toList(),
+  attendanceStats: AttendanceStats.fromJson(
+    json['attendanceStats'] as Map<String, dynamic>,
+  ),
+);
 
 Map<String, dynamic> _$MonthlyReportToJson(MonthlyReport instance) =>
     <String, dynamic>{
@@ -115,6 +120,7 @@ Map<String, dynamic> _$MonthlyReportToJson(MonthlyReport instance) =>
       'studentsWhoPartiallyPaid': instance.studentsWhoPartiallyPaid,
       'studentsWhoDidNotPay': instance.studentsWhoDidNotPay,
       'groupStats': instance.groupStats,
+      'fullyPaidStudents': instance.fullyPaidStudents,
       'unpaidStudents': instance.unpaidStudents,
       'partialPaymentStudents': instance.partialPaymentStudents,
       'attendanceStats': instance.attendanceStats,

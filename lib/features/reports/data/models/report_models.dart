@@ -95,6 +95,8 @@ class MonthlyReport {
   final int studentsWhoPartiallyPaid;
   final int studentsWhoDidNotPay;
   final List<GroupMonthlyStats> groupStats;
+  @JsonKey(defaultValue: [])
+  final List<StudentPaymentStatus> fullyPaidStudents;
   final List<StudentPaymentStatus> unpaidStudents;
   final List<StudentPaymentStatus> partialPaymentStudents;
   final AttendanceStats attendanceStats;
@@ -113,6 +115,7 @@ class MonthlyReport {
     required this.studentsWhoPartiallyPaid,
     required this.studentsWhoDidNotPay,
     required this.groupStats,
+    required this.fullyPaidStudents,
     required this.unpaidStudents,
     required this.partialPaymentStudents,
     required this.attendanceStats,

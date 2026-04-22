@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../../core/utils/number_formatter.dart';
 import '../../../../../core/widgets/app_widgets.dart' hide StatCard;
 import '../../../data/models/report_models.dart';
 import '../../bloc/report_bloc.dart';
@@ -141,7 +142,7 @@ class _DailyReportContent extends StatelessWidget {
 
         StatCard(
           title: 'Payments Received',
-          value: '${report.totalPaymentsReceived.toStringAsFixed(0)} UZS',
+          value: '${formatAmount(report.totalPaymentsReceived)} UZS',
           subtitle: '${report.paymentCount} payment${report.paymentCount != 1 ? 's' : ''}',
           icon: Icons.payments,
           color: Theme.of(context).colorScheme.primary,
@@ -223,7 +224,7 @@ class _DailyReportContent extends StatelessWidget {
                     '${payment.groupName} • ${payment.paidForMonth}',
                   ),
                   trailing: Text(
-                    '${payment.amount.toStringAsFixed(0)} UZS',
+                    '${formatAmount(payment.amount)} UZS',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.bold,
