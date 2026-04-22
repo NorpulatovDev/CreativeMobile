@@ -12,7 +12,9 @@ import '../../features/groups/presentation/pages/groups_page.dart';
 import '../../features/payments/presentation/bloc/payment_bloc.dart';
 import '../../features/payments/presentation/dialogs/payment_form_dialog.dart';
 import '../../features/payments/presentation/pages/payments_page.dart';
+import '../../features/reports/presentation/pages/payment_status_page.dart';
 import '../../features/reports/presentation/pages/reports_page.dart';
+import '../../features/students/presentation/bloc/student_bloc.dart';
 import '../../features/students/presentation/pages/student_detail_page.dart';
 import '../../features/students/presentation/pages/students_page.dart';
 import '../../features/teachers/presentation/pages/teacher_detail_page.dart';
@@ -42,78 +44,108 @@ class AppRouter {
         name: 'login',
         builder: (context, state) => const LoginPage(),
       ),
-      ShellRoute(
-        builder: (context, state, child) => MainScaffold(child: child),
-        routes: [
-          GoRoute(
-            path: Routes.home,
-            name: 'home',
-            builder: (context, state) => const HomePage(),
-          ),
-          GoRoute(
-            path: Routes.teachers,
-            name: 'teachers',
-            builder: (context, state) => const TeachersPage(),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            MainScaffold(navigationShell: navigationShell),
+        branches: [
+          // Branch 0 — Home + all secondary pages
+          StatefulShellBranch(
             routes: [
               GoRoute(
-                path: ':id',
-                name: 'teacher-detail',
-                builder: (context, state) {
-                  final id = int.parse(state.pathParameters['id']!);
-                  return TeacherDetailPage(teacherId: id);
-                },
+                path: Routes.home,
+                name: 'home',
+                builder: (context, state) => const HomePage(),
+              ),
+              GoRoute(
+                path: Routes.teachers,
+                name: 'teachers',
+                builder: (context, state) => const TeachersPage(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    name: 'teacher-detail',
+                    builder: (context, state) {
+                      final id = int.parse(state.pathParameters['id']!);
+                      return TeacherDetailPage(teacherId: id);
+                    },
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: Routes.inquiries,
+                name: 'inquiries',
+                builder: (context, state) => const InquiriesPage(),
+              ),
+              GoRoute(
+                path: Routes.payments,
+                name: 'payments',
+                builder: (context, state) => const PaymentsPage(),
+              ),
+              GoRoute(
+                path: Routes.attendance,
+                name: 'attendance',
+                builder: (context, state) => const AttendancePage(),
+              ),
+              GoRoute(
+                path: Routes.reports,
+                name: 'reports',
+                builder: (context, state) => const ReportsPage(),
+                routes: [
+                  GoRoute(
+                    path: 'payment-status',
+                    name: 'report-payment-status',
+                    builder: (context, state) {
+                      final args = state.extra as PaymentStatusPageArgs;
+                      return PaymentStatusPage(
+                        type: args.type,
+                        students: args.students,
+                        monthLabel: args.monthLabel,
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
           ),
-          GoRoute(
-            path: Routes.groups,
-            name: 'groups',
-            builder: (context, state) => const GroupsPage(),
+          // Branch 1 — Groups
+          StatefulShellBranch(
             routes: [
               GoRoute(
-                path: ':id',
-                name: 'group-detail',
-                builder: (context, state) {
-                  final id = int.parse(state.pathParameters['id']!);
-                  return GroupDetailPage(groupId: id);
-                },
+                path: Routes.groups,
+                name: 'groups',
+                builder: (context, state) => const GroupsPage(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    name: 'group-detail',
+                    builder: (context, state) {
+                      final id = int.parse(state.pathParameters['id']!);
+                      return GroupDetailPage(groupId: id);
+                    },
+                  ),
+                ],
               ),
             ],
           ),
-          GoRoute(
-            path: Routes.students,
-            name: 'students',
-            builder: (context, state) => const StudentsPage(),
+          // Branch 2 — Students
+          StatefulShellBranch(
             routes: [
               GoRoute(
-                path: ':id',
-                name: 'student-detail',
-                builder: (context, state) {
-                  final id = int.parse(state.pathParameters['id']!);
-                  return StudentDetailPage(studentId: id);
-                },
+                path: Routes.students,
+                name: 'students',
+                builder: (context, state) => const StudentsPage(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    name: 'student-detail',
+                    builder: (context, state) {
+                      final id = int.parse(state.pathParameters['id']!);
+                      return StudentDetailPage(studentId: id);
+                    },
+                  ),
+                ],
               ),
             ],
-          ),
-          GoRoute(
-            path: Routes.inquiries,
-            name: 'inquiries',
-            builder: (context, state) => const InquiriesPage(),
-          ),
-          GoRoute(
-            path: Routes.payments,
-            name: 'payments',
-            builder: (context, state) => const PaymentsPage(),
-          ),
-          GoRoute(
-            path: Routes.attendance,
-            name: 'attendance',
-            builder: (context, state) => const AttendancePage(),
-          ),
-          GoRoute(
-            path: Routes.reports,
-            name: 'reports',
-            builder: (context, state) => const ReportsPage(),
           ),
         ],
       ),
@@ -223,7 +255,7 @@ class _SplashPageState extends State<SplashPage>
                       borderRadius: BorderRadius.circular(32),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           blurRadius: 30,
                           offset: const Offset(0, 15),
                         ),
@@ -251,7 +283,7 @@ class _SplashPageState extends State<SplashPage>
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w300,
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       letterSpacing: 2,
                     ),
                   ),
@@ -262,7 +294,7 @@ class _SplashPageState extends State<SplashPage>
                     child: CircularProgressIndicator(
                       strokeWidth: 3,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        Colors.white.withOpacity(0.8),
+                        Colors.white.withValues(alpha: 0.8),
                       ),
                     ),
                   ),
@@ -276,31 +308,21 @@ class _SplashPageState extends State<SplashPage>
   }
 }
 
-class MainScaffold extends StatefulWidget {
-  final Widget child;
+class MainScaffold extends StatelessWidget {
+  final StatefulNavigationShell navigationShell;
 
-  const MainScaffold({super.key, required this.child});
-
-  @override
-  State<MainScaffold> createState() => _MainScaffoldState();
-}
-
-class _MainScaffoldState extends State<MainScaffold> {
-  int _currentIndex = 0;
+  const MainScaffold({super.key, required this.navigationShell});
 
   @override
   Widget build(BuildContext context) {
-    final location = GoRouterState.of(context).matchedLocation;
-    _currentIndex = _getIndexFromLocation(location);
-
     return Scaffold(
-      body: widget.child,
+      body: navigationShell,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppColors.surfaceLight,
           boxShadow: [
             BoxShadow(
-              color: AppColors.neutral900.withOpacity(0.05),
+              color: AppColors.neutral900.withValues(alpha: 0.05),
               blurRadius: 20,
               offset: const Offset(0, -5),
             ),
@@ -316,22 +338,22 @@ class _MainScaffoldState extends State<MainScaffold> {
                   icon: Icons.home_outlined,
                   selectedIcon: Icons.home_rounded,
                   label: 'Bosh sahifa',
-                  isSelected: _currentIndex == 0,
-                  onTap: () => context.go(Routes.home),
+                  isSelected: navigationShell.currentIndex == 0,
+                  onTap: () => navigationShell.goBranch(0),
                 ),
                 _NavItem(
                   icon: Icons.groups_outlined,
                   selectedIcon: Icons.groups_rounded,
                   label: 'Guruhlar',
-                  isSelected: _currentIndex == 1,
-                  onTap: () => context.go(Routes.groups),
+                  isSelected: navigationShell.currentIndex == 1,
+                  onTap: () => navigationShell.goBranch(1),
                 ),
                 _NavItem(
                   icon: Icons.school_outlined,
                   selectedIcon: Icons.school_rounded,
                   label: 'O\'quvchilar',
-                  isSelected: _currentIndex == 2,
-                  onTap: () => context.go(Routes.students),
+                  isSelected: navigationShell.currentIndex == 2,
+                  onTap: () => navigationShell.goBranch(2),
                 ),
               ],
             ),
@@ -339,12 +361,6 @@ class _MainScaffoldState extends State<MainScaffold> {
         ),
       ),
     );
-  }
-
-  int _getIndexFromLocation(String location) {
-    if (location.startsWith(Routes.groups)) return 1;
-    if (location.startsWith(Routes.students)) return 2;
-    return 0;
   }
 }
 
@@ -446,7 +462,7 @@ class _HomeHeader extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(Icons.school_rounded, color: Colors.white, size: 24),
@@ -473,7 +489,7 @@ class _HomeHeader extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.logout_rounded, color: Colors.white, size: 20),
@@ -516,13 +532,24 @@ class _PageGrid extends StatelessWidget {
     );
   }
 
+  static void _showAddStudent(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => BlocProvider(
+        create: (_) => getIt<StudentBloc>(),
+        child: const StudentFormDialog(),
+      ),
+    );
+  }
+
   static List<_PageData> _buildItems() => [
-    _PageData(icon: Icons.contact_phone_rounded, label: "So'rovlar",       color: Color(0xFF3B82F6), route: Routes.inquiries),
-    _PageData(icon: Icons.groups_rounded,         label: "Guruhlar",        color: AppColors.primary, route: Routes.groups),
-    _PageData(icon: Icons.school_rounded,         label: "O'quvchilar",     color: AppColors.success, route: Routes.students),
-    _PageData(icon: Icons.analytics_rounded,      label: "Hisobotlar",      color: Color(0xFF06B6D4), route: Routes.reports),
-    _PageData(icon: Icons.person_rounded,         label: "O'qituvchilar",   color: AppColors.warning, onTap: (ctx) => ctx.push(Routes.teachers)),
-    _PageData(icon: Icons.add_card_rounded,       label: "To'lov qo'shish", color: Color(0xFF8B5CF6), onTap: _showQuickPayment),
+    _PageData(icon: Icons.contact_phone_rounded, label: "So'rovlar",        color: Color(0xFF3B82F6), route: Routes.inquiries),
+    _PageData(icon: Icons.groups_rounded,         label: "Guruhlar",         color: AppColors.primary, route: Routes.groups),
+    _PageData(icon: Icons.school_rounded,         label: "O'quvchilar",      color: AppColors.success, route: Routes.students),
+    _PageData(icon: Icons.person_add_rounded,     label: "O'quvchi qo'shish",color: AppColors.success, onTap: _showAddStudent),
+    _PageData(icon: Icons.analytics_rounded,      label: "Hisobotlar",       color: Color(0xFF06B6D4), route: Routes.reports),
+    _PageData(icon: Icons.person_rounded,         label: "O'qituvchilar",    color: AppColors.warning, onTap: (ctx) => ctx.push(Routes.teachers)),
+    _PageData(icon: Icons.add_card_rounded,       label: "To'lov qo'shish",  color: Color(0xFF8B5CF6), onTap: _showQuickPayment),
   ];
 
   @override
@@ -558,7 +585,7 @@ class _PageCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 3),
             ),
@@ -571,7 +598,7 @@ class _PageCard extends StatelessWidget {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: data.color.withOpacity(0.12),
+                color: data.color.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: Icon(data.icon, color: data.color, size: 26),

@@ -7,6 +7,7 @@ import '../../../../core/router/routes.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../teachers/data/models/teacher_model.dart';
 import '../../../teachers/data/repositories/teacher_repository.dart';
+import '../../../../core/utils/number_formatter.dart';
 import '../../data/models/group_model.dart';
 import '../bloc/group_bloc.dart';
 
@@ -57,12 +58,23 @@ class _GroupsViewState extends State<GroupsView> {
     );
   }
 
+  Future<void> _onRefresh(BuildContext context) {
+    context.read<GroupBloc>().add(GroupLoadAll());
+    return context
+        .read<GroupBloc>()
+        .stream
+        .firstWhere((s) => s is GroupLoaded || s is GroupError);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      body: CustomScrollView(
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: () => _onRefresh(context),
+        color: AppColors.primary,
+        child: CustomScrollView(
+          slivers: [
           SliverAppBar(
             expandedHeight: 120,
             floating: false,
@@ -210,6 +222,7 @@ class _GroupsViewState extends State<GroupsView> {
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showGroupDialog(context),
@@ -452,7 +465,7 @@ class _GroupCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   _InfoChip(
                     icon: Icons.payments_outlined,
-                    label: '${group.monthlyFee.toStringAsFixed(0)} so\'m/oy',
+                    label: '${formatAmount(group.monthlyFee)} so\'m/oy',
                     color: AppColors.neutral600,
                   ),
                 ],
@@ -468,7 +481,7 @@ class _GroupCard extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'To\'langan: ${group.totalPaid.toStringAsFixed(0)} so\'m',
+                              'To\'langan: ${formatAmount(group.totalPaid)} so\'m',
                               style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(color: AppColors.neutral500),
                             ),
@@ -511,8 +524,8 @@ class _GroupCard extends StatelessWidget {
                     ),
                     child: Text(
                       isDebt
-                          ? '-${debt.toStringAsFixed(0)}'
-                          : '+${(-debt).toStringAsFixed(0)}',
+                          ? '-${formatAmount(debt)}'
+                          : '+${formatAmount(-debt)}',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,

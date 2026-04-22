@@ -7,6 +7,8 @@ import '../../../../core/services/sms_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
 import '../../../enrollments/data/repositories/enrollment_repository.dart';
+import '../../../enrollments/data/datasources/enrollment_local_datasource.dart';
+import '../../../groups/data/datasources/group_local_datasource.dart';
 import '../../../groups/data/models/group_model.dart';
 import '../../../groups/data/repositories/group_repository.dart';
 import '../../../students/data/repositories/student_repository.dart';
@@ -38,6 +40,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
   bool _loadingGroups = true;
   bool _loadingStudents = false;
   bool _submitting = false;
+  int? _loadedGroupId;
 
   bool get isEditing => widget.payment != null;
 
@@ -63,43 +66,55 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
   }
 
   Future<void> _loadGroups() async {
+    // Show cached groups immediately — dialog opens without a spinner
+    final cached = getIt<GroupLocalDataSource>().getAll();
+    if (cached.isNotEmpty) _applyGroups(cached);
+
+    // Refresh from network in the background
     final (groups, _) = await getIt<GroupRepository>().getAll();
-    if (mounted) {
-      setState(() {
-        _groups = groups ?? [];
-        _loadingGroups = false;
-      });
-      if (_selectedGroupId != null) {
-        _loadStudentsForGroup(_selectedGroupId!);
-        if (!isEditing) {
-          final group = _groups.firstWhere((g) => g.id == _selectedGroupId);
-          _amountController.text = group.monthlyFee.toStringAsFixed(0);
-        }
+    if (mounted && groups != null) _applyGroups(groups);
+  }
+
+  void _applyGroups(List<GroupModel> groups) {
+    setState(() {
+      _groups = groups;
+      _loadingGroups = false;
+    });
+    if (_selectedGroupId != null && _loadedGroupId != _selectedGroupId) {
+      _loadStudentsForGroup(_selectedGroupId!);
+      if (!isEditing) {
+        final group = _groups.where((g) => g.id == _selectedGroupId).firstOrNull;
+        if (group != null) _amountController.text = group.monthlyFee.toStringAsFixed(0);
       }
     }
   }
 
   Future<void> _loadStudentsForGroup(int groupId) async {
+    final cached = getIt<EnrollmentLocalDataSource>()
+        .getGroupStudents(groupId)
+        .where((e) => e.active)
+        .toList();
     setState(() {
-      _loadingStudents = true;
-      _groupStudents = [];
-      if (widget.preselectedStudentId == null && !isEditing) {
+      _loadedGroupId = groupId;
+      _groupStudents = cached;
+      _loadingStudents = cached.isEmpty;
+      if (cached.isEmpty && widget.preselectedStudentId == null && !isEditing) {
         _selectedStudentId = null;
       }
     });
     final (enrollments, _) =
         await getIt<EnrollmentRepository>().getGroupStudents(groupId);
-    if (mounted) {
-      setState(() {
-        _groupStudents = (enrollments ?? []).where((e) => e.active).toList();
-        _loadingStudents = false;
-        if (_selectedStudentId != null && !isEditing) {
-          final exists =
-              _groupStudents.any((e) => e.studentId == _selectedStudentId);
-          if (!exists) _selectedStudentId = null;
-        }
-      });
-    }
+    if (!mounted || _loadedGroupId != groupId) return;
+    setState(() {
+      _groupStudents =
+          (enrollments ?? cached).where((e) => e.active).toList();
+      _loadingStudents = false;
+      if (_selectedStudentId != null && !isEditing) {
+        final exists =
+            _groupStudents.any((e) => e.studentId == _selectedStudentId);
+        if (!exists) _selectedStudentId = null;
+      }
+    });
   }
 
   @override
@@ -172,7 +187,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
     return BlocListener<PaymentBloc, PaymentState>(
       listener: (context, state) {
         if (state is PaymentActionSuccess) {
-          Navigator.pop(context);
+          Navigator.pop(context, true);
         } else if (state is PaymentError) {
           setState(() => _submitting = false);
         }
@@ -188,7 +203,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
                   borderRadius:
                       const BorderRadius.vertical(top: Radius.circular(24)),
                 ),
@@ -197,7 +212,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF8B5CF6).withOpacity(0.15),
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
@@ -251,9 +266,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
                                 child: _PickerTile(
                                   icon: Icons.group_outlined,
                                   placeholder: 'Guruhni tanlang',
-                                  value: selectedGroup != null
-                                      ? selectedGroup.name
-                                      : null,
+                                  value: selectedGroup?.name,
                                   subtitle: selectedGroup != null
                                       ? '${selectedGroup.monthlyFee.toStringAsFixed(0)} so\'m/oy'
                                       : null,
@@ -321,11 +334,13 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
                                     hintText: 'Masalan: 500000',
                                   ),
                                   validator: (v) {
-                                    if (v == null || v.trim().isEmpty)
+                                    if (v == null || v.trim().isEmpty) {
                                       return 'Miqdorni kiriting';
+                                    }
                                     if (double.tryParse(v) == null ||
-                                        double.parse(v) <= 0)
+                                        double.parse(v) <= 0) {
                                       return 'To\'g\'ri miqdor kiriting';
+                                    }
                                     return null;
                                   },
                                 ),
@@ -335,7 +350,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
                               _FormField(
                                 label: 'To\'lov oyi',
                                 child: DropdownButtonFormField<String>(
-                                  value: _selectedMonth,
+                                  initialValue: _selectedMonth,
                                   decoration: InputDecoration(
                                     prefixIcon: Icon(
                                         Icons.calendar_month_outlined,
@@ -348,8 +363,9 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
                                           ))
                                       .toList(),
                                   onChanged: (v) {
-                                    if (v != null)
+                                    if (v != null) {
                                       setState(() => _selectedMonth = v);
+                                    }
                                   },
                                 ),
                               ),
@@ -452,7 +468,7 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
         }
         return;
       }
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } catch (_) {
       if (mounted) setState(() => _submitting = false);
     }
@@ -595,7 +611,7 @@ class _SearchableGroupPickerState extends State<_SearchableGroupPicker> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(Icons.group_outlined,
@@ -672,7 +688,7 @@ class _SearchableGroupPickerState extends State<_SearchableGroupPicker> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Center(
@@ -703,7 +719,7 @@ class _SearchableGroupPickerState extends State<_SearchableGroupPicker> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         tileColor: isSelected
-                            ? const Color(0xFF8B5CF6).withOpacity(0.05)
+                            ? const Color(0xFF8B5CF6).withValues(alpha: 0.05)
                             : null,
                       );
                     },
@@ -778,7 +794,7 @@ class _SearchableStudentPickerState extends State<_SearchableStudentPicker> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppColors.success.withOpacity(0.1),
+                    color: AppColors.success.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(Icons.person_outline_rounded,
@@ -854,7 +870,7 @@ class _SearchableStudentPickerState extends State<_SearchableStudentPicker> {
                         },
                         leading: CircleAvatar(
                           backgroundColor:
-                              AppColors.success.withOpacity(0.12),
+                              AppColors.success.withValues(alpha: 0.12),
                           child: Text(
                             enrollment.studentName.isNotEmpty
                                 ? enrollment.studentName[0].toUpperCase()
@@ -877,7 +893,7 @@ class _SearchableStudentPickerState extends State<_SearchableStudentPicker> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         tileColor: isSelected
-                            ? AppColors.success.withOpacity(0.05)
+                            ? AppColors.success.withValues(alpha: 0.05)
                             : null,
                       );
                     },

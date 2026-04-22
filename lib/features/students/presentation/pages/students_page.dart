@@ -9,6 +9,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/router/routes.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/phone_formatter.dart';
+import '../../../groups/data/datasources/group_local_datasource.dart';
 import '../../../groups/data/models/group_model.dart';
 import '../../../groups/data/repositories/group_repository.dart';
 import '../../data/models/student_model.dart';
@@ -88,13 +89,25 @@ class _StudentsViewState extends State<StudentsView> {
     );
   }
 
+  Future<void> _onRefresh() {
+    context.read<StudentBloc>().add(const StudentSearch(''));
+    _searchController.clear();
+    return context
+        .read<StudentBloc>()
+        .stream
+        .firstWhere((s) => s is StudentLoaded || s is StudentError);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      body: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
+      body: RefreshIndicator(
+        onRefresh: _onRefresh,
+        color: AppColors.success,
+        child: CustomScrollView(
+          controller: _scrollController,
+          slivers: [
           SliverAppBar(
             expandedHeight: 120,
             floating: false,
@@ -295,6 +308,7 @@ class _StudentsViewState extends State<StudentsView> {
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showStudentDialog(context),
@@ -705,9 +719,8 @@ class StudentFormDialog extends StatefulWidget {
 
 class _StudentFormDialogState extends State<StudentFormDialog> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _nameController = TextEditingController(
-    text: widget.student?.fullName,
-  );
+  late final TextEditingController _nameController =
+      TextEditingController(text: widget.student?.fullName);
   late final TextEditingController _parentNameController =
       TextEditingController(text: widget.student?.parentName);
   late final TextEditingController _phoneController = TextEditingController(
@@ -717,26 +730,19 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
   );
   List<GroupModel> _groups = [];
   int? _selectedGroupId;
-  bool _loadingGroups = true;
+  String? _groupError;
   bool _submitting = false;
   bool get isEditing => widget.student != null;
 
   @override
   void initState() {
     super.initState();
-    if (!isEditing)
-      _loadGroups();
-    else
-      _loadingGroups = false;
-  }
-
-  Future<void> _loadGroups() async {
-    final (groups, _) = await getIt<GroupRepository>().getAll();
-    if (mounted)
-      setState(() {
-        _groups = groups ?? [];
-        _loadingGroups = false;
+    if (!isEditing) {
+      _groups = getIt<GroupLocalDataSource>().getAll();
+      getIt<GroupRepository>().getAll().then((result) {
+        if (mounted && result.$1 != null) setState(() => _groups = result.$1!);
       });
+    }
   }
 
   @override
@@ -747,184 +753,225 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
     super.dispose();
   }
 
+  Future<void> _pickGroup() async {
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) =>
+          _GroupPickerSheet(groups: _groups, selectedId: _selectedGroupId),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _selectedGroupId = picked;
+        _groupError = null;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final selectedGroup = _selectedGroupId != null
+        ? _groups.where((g) => g.id == _selectedGroupId).firstOrNull
+        : null;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Container(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 400),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: AppColors.success.withOpacity(0.1),
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      isEditing ? Icons.edit_rounded : Icons.person_add_rounded,
-                      color: AppColors.success,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isEditing
-                              ? 'O\'quvchini tahrirlash'
-                              : 'Yangi o\'quvchi',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          isEditing
-                              ? 'Ma\'lumotlarni yangilash'
-                              : 'O\'quvchi ma\'lumotlarini kiriting',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: AppColors.neutral500),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Flexible(
-              child: SingleChildScrollView(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
                 padding: const EdgeInsets.all(24),
-                child: _loadingGroups
-                    ? const SizedBox(
-                        height: 100,
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    : Form(
-                        key: _formKey,
-                        child: Column(
-                          children: [
-                            _buildTextField(
-                              controller: _nameController,
-                              label: 'O\'quvchi ismi',
-                              hint: 'To\'liq ismni kiriting',
-                              icon: Icons.person_outline_rounded,
-                              validator: (v) => v == null || v.trim().isEmpty
-                                  ? 'Ismni kiriting'
-                                  : null,
-                            ),
-                            const SizedBox(height: 16),
-                            _buildTextField(
-                              controller: _parentNameController,
-                              label: 'Ota-ona ismi (ixtiyoriy)',
-                              hint: 'Ota-ona ismini kiriting',
-                              icon: Icons.family_restroom_rounded,
-                            ),
-                            const SizedBox(height: 16),
-                            _buildPhoneField(),
-                            if (!isEditing && _groups.isNotEmpty) ...[
-                              const SizedBox(height: 16),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Guruhga qo\'shish (ixtiyoriy)',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.neutral700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  DropdownButtonFormField<int?>(
-                                    value: _selectedGroupId,
-                                    decoration: InputDecoration(
-                                      prefixIcon: Icon(
-                                        Icons.groups_rounded,
-                                        color: AppColors.neutral400,
-                                      ),
-                                    ),
-                                    items: [
-                                      const DropdownMenuItem<int?>(
-                                        value: null,
-                                        child: Text('Guruhsiz'),
-                                      ),
-                                      ..._groups.map(
-                                        (g) => DropdownMenuItem<int?>(
-                                          value: g.id,
-                                          child: Text(g.name),
-                                        ),
-                                      ),
-                                    ],
-                                    onChanged: (v) =>
-                                        setState(() => _selectedGroupId = v),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.1),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: AppColors.neutral50,
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(24),
+                      child: Icon(
+                        isEditing
+                            ? Icons.edit_rounded
+                            : Icons.person_add_rounded,
+                        color: AppColors.success,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isEditing
+                                ? 'O\'quvchini tahrirlash'
+                                : 'Yangi o\'quvchi',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            isEditing
+                                ? 'Ma\'lumotlarni yangilash'
+                                : 'O\'quvchi ma\'lumotlarini kiriting',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: AppColors.neutral500),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _submitting
-                          ? null
-                          : () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: AppColors.neutral300),
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTextField(
+                        controller: _nameController,
+                        label: 'O\'quvchi ismi',
+                        hint: 'To\'liq ismni kiriting',
+                        icon: Icons.person_outline_rounded,
+                        validator: (v) => v == null || v.trim().isEmpty
+                            ? 'Ismni kiriting'
+                            : null,
                       ),
-                      child: const Text('Bekor qilish'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _loadingGroups || _submitting ? null : _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.success,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        controller: _parentNameController,
+                        label: 'Ota-ona ismi (ixtiyoriy)',
+                        hint: 'Ota-ona ismini kiriting',
+                        icon: Icons.family_restroom_rounded,
                       ),
-                      child: _submitting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
+                      const SizedBox(height: 16),
+                      _buildPhoneField(),
+                      if (!isEditing) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          'Guruh',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.neutral700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: _pickGroup,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceLight,
+                              border: Border.all(
+                                color: _groupError != null
+                                    ? AppColors.error
+                                    : AppColors.neutral300,
+                                width: _groupError != null ? 1.5 : 1,
                               ),
-                            )
-                          : Text(isEditing ? 'Yangilash' : 'Yaratish'),
-                    ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.groups_rounded,
+                                  color: _groupError != null
+                                      ? AppColors.error
+                                      : AppColors.neutral400,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    selectedGroup?.name ?? 'Guruhni tanlang',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: selectedGroup != null
+                                          ? AppColors.neutral900
+                                          : AppColors.neutral400,
+                                    ),
+                                  ),
+                                ),
+                                Icon(Icons.arrow_drop_down_rounded,
+                                    color: AppColors.neutral400),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (_groupError != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6, left: 12),
+                            child: Text(
+                              _groupError!,
+                              style: TextStyle(
+                                  color: AppColors.error, fontSize: 12),
+                            ),
+                          ),
+                      ],
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: AppColors.neutral50,
+                  borderRadius:
+                      const BorderRadius.vertical(bottom: Radius.circular(24)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed:
+                            _submitting ? null : () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: BorderSide(color: AppColors.neutral300),
+                        ),
+                        child: const Text('Bekor qilish'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _submitting ? null : _submit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.success,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: _submitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : Text(isEditing ? 'Yangilash' : 'Yaratish'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1000,37 +1047,34 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
   );
 
   void _submit() async {
-    if (_formKey.currentState?.validate() ?? false) {
-      setState(() => _submitting = true);
-      final bloc = context.read<StudentBloc>();
-      final parentName = _parentNameController.text.trim().isEmpty
-          ? 'Unknown'
-          : _parentNameController.text.trim();
+    final formValid = _formKey.currentState?.validate() ?? false;
+    final groupValid = isEditing || _selectedGroupId != null;
+    if (!groupValid) setState(() => _groupError = 'Guruhni tanlang');
+    if (!formValid || !groupValid) return;
 
-      // Remove spaces from phone number before sending to API
-      final phoneNumber = _phoneController.text.replaceAll(' ', '');
+    setState(() => _submitting = true);
+    final bloc = context.read<StudentBloc>();
+    final parentName = _parentNameController.text.trim().isEmpty
+        ? 'Unknown'
+        : _parentNameController.text.trim();
+    final phoneNumber = _phoneController.text.replaceAll(' ', '');
 
-      if (isEditing) {
-        bloc.add(
-          StudentUpdate(
-            id: widget.student!.id,
-            fullName: _nameController.text.trim(),
-            parentName: parentName,
-            parentPhoneNumber: phoneNumber,
-          ),
-        );
-      } else {
-        bloc.add(
-          StudentCreateWithGroup(
-            fullName: _nameController.text.trim(),
-            parentName: parentName,
-            parentPhoneNumber: phoneNumber,
-            groupId: _selectedGroupId,
-          ),
-        );
-      }
-      Navigator.pop(context);
+    if (isEditing) {
+      bloc.add(StudentUpdate(
+        id: widget.student!.id,
+        fullName: _nameController.text.trim(),
+        parentName: parentName,
+        parentPhoneNumber: phoneNumber,
+      ));
+    } else {
+      bloc.add(StudentCreateWithGroup(
+        fullName: _nameController.text.trim(),
+        parentName: parentName,
+        parentPhoneNumber: phoneNumber,
+        groupId: _selectedGroupId,
+      ));
     }
+    Navigator.pop(context);
   }
 }
 
@@ -1099,6 +1143,143 @@ class UzbekPhoneNumberFormatter extends TextInputFormatter {
     return TextEditingValue(
       text: formattedText,
       selection: TextSelection.collapsed(offset: formattedText.length),
+    );
+  }
+}
+
+class _GroupPickerSheet extends StatefulWidget {
+  final List<GroupModel> groups;
+  final int? selectedId;
+
+  const _GroupPickerSheet({required this.groups, this.selectedId});
+
+  @override
+  State<_GroupPickerSheet> createState() => _GroupPickerSheetState();
+}
+
+class _GroupPickerSheetState extends State<_GroupPickerSheet> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _query.isEmpty
+        ? widget.groups
+        : widget.groups
+            .where((g) =>
+                g.name.toLowerCase().contains(_query.toLowerCase()) ||
+                g.teacherName.toLowerCase().contains(_query.toLowerCase()))
+            .toList();
+
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.neutral300,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 8, 12),
+            child: Row(
+              children: [
+                Text(
+                  'Guruhni tanlang',
+                  style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.neutral900),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'Guruhni qidirish...',
+                prefixIcon:
+                    Icon(Icons.search_rounded, color: AppColors.neutral400),
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+          LimitedBox(
+            maxHeight: 300,
+            child: filtered.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Center(
+                      child: Text('Guruh topilmadi',
+                          style: TextStyle(color: AppColors.neutral500)),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final group = filtered[i];
+                      final isSelected = widget.selectedId == group.id;
+                      return ListTile(
+                        onTap: () => Navigator.pop(context, group.id),
+                        leading: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Center(
+                            child: Text(
+                              group.name.isNotEmpty
+                                  ? group.name[0].toUpperCase()
+                                  : 'G',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary),
+                            ),
+                          ),
+                        ),
+                        title: Text(group.name,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(group.teacherName,
+                            style: TextStyle(
+                                fontSize: 12, color: AppColors.neutral500)),
+                        trailing: isSelected
+                            ? Icon(Icons.check_rounded,
+                                color: AppColors.primary)
+                            : null,
+                        selected: isSelected,
+                        selectedTileColor:
+                            AppColors.primary.withValues(alpha: 0.05),
+                      );
+                    },
+                  ),
+          ),
+          SizedBox(height: 8 + MediaQuery.of(context).padding.bottom),
+        ],
+      ),
     );
   }
 }

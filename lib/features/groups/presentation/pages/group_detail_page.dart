@@ -9,10 +9,11 @@ import '../../../enrollments/data/repositories/enrollment_repository.dart';
 import '../../../payments/presentation/bloc/payment_bloc.dart';
 import '../../../payments/presentation/dialogs/payment_form_dialog.dart';
 import '../../../students/data/models/student_model.dart';
-import '../../data/models/group_model.dart';
-import '../../data/repositories/group_repository.dart';
+import '../bloc/enroll_student_cubit.dart';
+import '../bloc/group_detail_cubit.dart';
+import '../bloc/group_payments_cubit.dart';
+import '../bloc/group_students_cubit.dart';
 import '../dialogs/enroll_student_dialog.dart';
-import '../widgets/group_stat_item.dart';
 import '../widgets/year_month_picker.dart';
 import 'tabs/group_attendance_tab.dart';
 import 'tabs/group_payments_tab.dart';
@@ -29,45 +30,43 @@ class GroupDetailPage extends StatefulWidget {
 
 class _GroupDetailPageState extends State<GroupDetailPage>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  late AttendanceBloc _attendanceBloc;
-  GroupModel? _group;
-  List<StudentModel> _students = [];
-  bool _loading = true;
-  int _studentsRefreshKey = 0;
-  int _paymentsRefreshKey = 0;
-  late DateTime _selectedMonth;
+  late final TabController _tabController;
+  late final GroupDetailCubit _detailCubit;
+  late final GroupStudentsCubit _studentsCubit;
+  late final GroupPaymentsCubit _paymentsCubit;
+  late final AttendanceBloc _attendanceBloc;
+  late final EnrollStudentCubit _enrollStudentCubit;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(() => setState(() {}));
-    _selectedMonth = DateTime.now();
+    _tabController = TabController(length: 3, vsync: this)
+      ..addListener(() => setState(() {}));
     _attendanceBloc = getIt<AttendanceBloc>();
-    _loadGroupData();
-  }
-
-  Future<void> _loadGroupData() async {
-    setState(() => _loading = true);
-    final (group, _) = await getIt<GroupRepository>().getById(widget.groupId);
-    if (mounted) {
-      setState(() {
-        _group = group;
-        _loading = false;
-      });
-      _attendanceBloc.add(AttendanceLoadByGroupAndMonth(
-        groupId: widget.groupId,
-        year: _selectedMonth.year,
-        month: _selectedMonth.month,
-      ));
-    }
+    _detailCubit = GroupDetailCubit(
+      groupRepository: getIt(),
+      attendanceBloc: _attendanceBloc,
+      groupId: widget.groupId,
+    );
+    _studentsCubit = GroupStudentsCubit(getIt());
+    _paymentsCubit = GroupPaymentsCubit(getIt());
+    _enrollStudentCubit = EnrollStudentCubit(
+      studentRepo: getIt(),
+      enrollmentRepo: getIt(),
+      enrollmentLocal: getIt(),
+      groupId: widget.groupId,
+    );
+    _detailCubit.loadGroup();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _detailCubit.close();
+    _studentsCubit.close();
+    _paymentsCubit.close();
     _attendanceBloc.close();
+    _enrollStudentCubit.close();
     super.dispose();
   }
 
@@ -78,7 +77,7 @@ class _GroupDetailPageState extends State<GroupDetailPage>
         content: Row(children: [
           Icon(icon, color: Colors.white),
           const SizedBox(width: 12),
-          Expanded(child: Text(message))
+          Expanded(child: Text(message)),
         ]),
         backgroundColor: backgroundColor,
         behavior: SnackBarBehavior.floating,
@@ -87,7 +86,7 @@ class _GroupDetailPageState extends State<GroupDetailPage>
     );
   }
 
-  void _showMonthPicker() {
+  void _showMonthPicker(DateTime selectedMonth) {
     final now = DateTime.now();
     showDialog(
       context: context,
@@ -116,17 +115,12 @@ class _GroupDetailPageState extends State<GroupDetailPage>
               SizedBox(
                 height: 300,
                 child: YearMonthPicker(
-                  selectedDate: _selectedMonth,
+                  selectedDate: selectedMonth,
                   firstDate: DateTime(2020, 1),
                   lastDate: DateTime(now.year + 1, 12),
                   onChanged: (date) {
                     Navigator.pop(context);
-                    setState(() => _selectedMonth = date);
-                    _attendanceBloc.add(AttendanceLoadByGroupAndMonth(
-                      groupId: widget.groupId,
-                      year: date.year,
-                      month: date.month,
-                    ));
+                    _detailCubit.selectMonth(date);
                   },
                 ),
               ),
@@ -140,7 +134,7 @@ class _GroupDetailPageState extends State<GroupDetailPage>
   String _getMonthName(int month) {
     const months = [
       'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
-      'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'
+      'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr',
     ];
     return months[month - 1];
   }
@@ -169,7 +163,7 @@ class _GroupDetailPageState extends State<GroupDetailPage>
               } else {
                 _showSnackBar('${student.fullName} guruhdan chiqarildi',
                     AppColors.success, Icons.check_circle_outline);
-                setState(() => _studentsRefreshKey++);
+                _studentsCubit.reload();
               }
             },
             child: const Text('Chiqarish'),
@@ -179,18 +173,16 @@ class _GroupDetailPageState extends State<GroupDetailPage>
     );
   }
 
-  void _showTakeAttendanceSheet() {
-    showModalBottomSheet(
+  void _showTakeAttendanceSheet(GroupDetailLoaded state) {
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      useSafeArea: false,
       builder: (ctx) => BlocProvider.value(
         value: _attendanceBloc,
         child: TakeAttendanceSheet(
           groupId: widget.groupId,
-          groupName: _group?.name ?? '',
-          initialDate: _selectedMonth,
-          students: _students,
+          initialDate: state.selectedMonth,
+          students: _studentsCubit.students,
         ),
       ),
     );
@@ -199,19 +191,19 @@ class _GroupDetailPageState extends State<GroupDetailPage>
   void _showEnrollStudentDialog() {
     showDialog(
       context: context,
-      builder: (dialogContext) => EnrollStudentDialog(
-        groupId: widget.groupId,
-        onEnrolled: () => setState(() => _studentsRefreshKey++),
-        onError: (message) =>
-            _showSnackBar(message, AppColors.error, Icons.error_outline),
-        onWarning: (message) =>
-            _showSnackBar(message, AppColors.warning, Icons.info_outline),
+      builder: (dialogContext) => BlocProvider.value(
+        value: _enrollStudentCubit,
+        child: EnrollStudentDialog(
+          onEnrolled: _studentsCubit.reload,
+          onError: (message) =>
+              _showSnackBar(message, AppColors.error, Icons.error_outline),
+        ),
       ),
     );
   }
 
   void _showAddPaymentDialog() {
-    if (_students.isEmpty) {
+    if (_studentsCubit.students.isEmpty) {
       _showSnackBar(
           'Bu guruhda o\'quvchilar yo\'q', AppColors.warning, Icons.info_outline);
       return;
@@ -222,266 +214,291 @@ class _GroupDetailPageState extends State<GroupDetailPage>
         create: (_) => getIt<PaymentBloc>(),
         child: PaymentFormDialog(preselectedGroupId: widget.groupId),
       ),
-    ).then((_) => setState(() => _paymentsRefreshKey++));
+    ).then((saved) { if (saved == true) _paymentsCubit.reload(); });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return Scaffold(
-        backgroundColor: AppColors.backgroundLight,
-        appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
-        body: const Center(
-            child: CircularProgressIndicator(color: AppColors.primary)),
-      );
-    }
-
-    if (_group == null) {
-      return Scaffold(
-        backgroundColor: AppColors.backgroundLight,
-        appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                    color: AppColors.errorLight, shape: BoxShape.circle),
-                child: Icon(Icons.error_outline_rounded,
-                    size: 48, color: AppColors.error),
-              ),
-              const SizedBox(height: 24),
-              Text('Guruh topilmadi',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppColors.neutral700,
-                      fontWeight: FontWeight.w600)),
-            ],
-          ),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: _detailCubit),
+        BlocProvider.value(value: _studentsCubit),
+        BlocProvider.value(value: _paymentsCubit),
+        BlocProvider.value(value: _attendanceBloc),
+        BlocProvider.value(value: _enrollStudentCubit),
+      ],
+      child: BlocListener<GroupDetailCubit, GroupDetailState>(
+        listenWhen: (prev, curr) {
+          if (curr is! GroupDetailLoaded) return false;
+          if (prev is! GroupDetailLoaded) return true;
+          return prev.selectedMonth != curr.selectedMonth;
+        },
+        listener: (context, state) {
+          final loaded = state as GroupDetailLoaded;
+          _studentsCubit.load(
+            groupId: widget.groupId,
+            year: loaded.selectedMonth.year,
+            month: loaded.selectedMonth.month,
+          );
+          _paymentsCubit.load(
+            groupId: widget.groupId,
+            year: loaded.selectedMonth.year,
+            month: loaded.selectedMonth.month,
+          );
+        },
+        child: BlocBuilder<GroupDetailCubit, GroupDetailState>(
+          builder: (context, state) {
+            if (state is GroupDetailLoading) return _buildLoadingScaffold();
+            if (state is GroupDetailError) return _buildErrorScaffold();
+            if (state is GroupDetailLoaded) return _buildScaffold(state);
+            return _buildLoadingScaffold();
+          },
         ),
-      );
-    }
+      ),
+    );
+  }
 
+  Widget _buildLoadingScaffold() {
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
-      body: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverAppBar(
-            expandedHeight: 200,
-            floating: false,
-            pinned: true,
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [AppColors.gradientStart, AppColors.gradientEnd]),
-                ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 64,
-                              height: 64,
-                              decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(20)),
-                              child: Center(
-                                  child: Text(
-                                      _group!.name.isNotEmpty
-                                          ? _group!.name[0].toUpperCase()
-                                          : 'G',
-                                      style: const TextStyle(
-                                          fontSize: 28,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white))),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(_group!.name,
-                                      style: const TextStyle(
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white)),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Icon(Icons.person_outline_rounded,
-                                          size: 16,
-                                          color: Colors.white.withOpacity(0.8)),
-                                      const SizedBox(width: 6),
-                                      Text(_group!.teacherName,
-                                          style: TextStyle(
-                                              fontSize: 14,
-                                              color:
-                                                  Colors.white.withOpacity(0.9))),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Spacer(),
-                        Row(
-                          children: [
-                            GroupStatItem(
-                                icon: Icons.people_rounded,
-                                value: '${_group!.studentsCount}',
-                                label: 'O\'quvchi'),
-                            const SizedBox(width: 24),
-                            GroupStatItem(
-                                icon: Icons.payments_rounded,
-                                value:
-                                    '${_group!.monthlyFee.toStringAsFixed(0)}',
-                                label: 'so\'m/oy'),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(48),
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: AppColors.surfaceLight,
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  labelColor: AppColors.primary,
-                  unselectedLabelColor: AppColors.neutral400,
-                  indicatorColor: AppColors.primary,
-                  indicatorWeight: 3,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.w600),
-                  tabs: const [
-                    Tab(
-                        text: 'O\'quvchilar',
-                        icon: Icon(Icons.people_rounded, size: 20)),
-                    Tab(
-                        text: 'To\'lovlar',
-                        icon: Icon(Icons.payment_rounded, size: 20)),
-                    Tab(
-                        text: 'Davomat',
-                        icon: Icon(Icons.fact_check_rounded, size: 20)),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-        body: Column(
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
+      body: const Center(
+          child: CircularProgressIndicator(color: AppColors.primary)),
+    );
+  }
+
+  Widget _buildErrorScaffold() {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundLight,
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: AppColors.surfaceLight,
-                border: Border(
-                    bottom: BorderSide(
-                        color: AppColors.neutral200.withOpacity(0.5))),
+                  color: AppColors.errorLight, shape: BoxShape.circle),
+              child: Icon(Icons.error_outline_rounded,
+                  size: 48, color: AppColors.error),
+            ),
+            const SizedBox(height: 24),
+            Text('Guruh topilmadi',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: AppColors.neutral700,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScaffold(GroupDetailLoaded state) {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundLight,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        foregroundColor: AppColors.neutral900,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: false,
+        titleSpacing: 12,
+        title: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.calendar_month_rounded,
-                      size: 20, color: AppColors.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '${_getMonthName(_selectedMonth.month).toUpperCase()} ${_selectedMonth.year}',
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.neutral700),
-                    ),
+              child: Center(
+                child: Text(
+                  state.group.name.isNotEmpty
+                      ? state.group.name[0].toUpperCase()
+                      : 'G',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: AppColors.primary,
                   ),
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: _showMonthPicker,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Text('O\'zgartirish',
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.primary)),
-                            const SizedBox(width: 4),
-                            Icon(Icons.arrow_drop_down,
-                                size: 20, color: AppColors.primary),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
+            const SizedBox(width: 10),
             Expanded(
-              child: TabBarView(
-                controller: _tabController,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GroupStudentsTab(
-                    key: ValueKey(
-                        'students_${_studentsRefreshKey}_${_selectedMonth.year}_${_selectedMonth.month}'),
-                    groupId: widget.groupId,
-                    year: _selectedMonth.year,
-                    month: _selectedMonth.month,
-                    onStudentsLoaded: (students) {
-                      if (mounted) setState(() => _students = students);
-                    },
-                    onRemoveStudent: _confirmRemoveStudent,
+                  Text(
+                    state.group.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.neutral900,
+                    ),
                   ),
-                  GroupPaymentsTab(
-                    key: ValueKey(
-                        'payments_${_paymentsRefreshKey}_${_selectedMonth.year}_${_selectedMonth.month}'),
-                    groupId: widget.groupId,
-                    year: _selectedMonth.year,
-                    month: _selectedMonth.month,
-                  ),
-                  GroupAttendanceTab(
-                    bloc: _attendanceBloc,
-                    groupId: widget.groupId,
-                    year: _selectedMonth.year,
-                    month: _selectedMonth.month,
+                  const SizedBox(height: 2),
+                  Text(
+                    state.group.teacherName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.neutral600,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
             ),
           ],
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: IconButton(
+              onPressed: () {},
+              icon: const Icon(Icons.more_vert_rounded),
+              splashRadius: 22,
+              tooltip: 'Boshqa',
+            ),
+          ),
+        ],
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            color: AppColors.surfaceLight,
+            borderRadius: const BorderRadius.vertical(
+              bottom: Radius.circular(24),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.06),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundLight,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: AppColors.neutral200),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                dividerColor: Colors.transparent,
+                labelColor: AppColors.primary,
+                unselectedLabelColor: AppColors.neutral500,
+                indicatorSize: TabBarIndicatorSize.tab,
+                indicator: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+                tabs: const [
+                  Tab(text: 'O\'quvchilar'),
+                  Tab(text: 'Davomat'),
+                  Tab(text: 'To\'lovlar'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+      body: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceLight,
+              border: Border(
+                  bottom: BorderSide(
+                      color: AppColors.neutral200.withValues(alpha: 0.5))),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.calendar_month_rounded,
+                    size: 20, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${_getMonthName(state.selectedMonth.month).toUpperCase()} ${state.selectedMonth.year}',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.neutral700),
+                  ),
+                ),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _showMonthPicker(state.selectedMonth),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Text('O\'zgartirish',
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primary)),
+                          const SizedBox(width: 4),
+                          Icon(Icons.arrow_drop_down,
+                              size: 20, color: AppColors.primary),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                GroupStudentsTab(
+                  groupId: widget.groupId,
+                  onRemoveStudent: _confirmRemoveStudent,
+                ),
+                GroupAttendanceTab(
+                  bloc: _attendanceBloc,
+                  groupId: widget.groupId,
+                  year: state.selectedMonth.year,
+                  month: state.selectedMonth.month,
+                ),
+                const GroupPaymentsTab(),
+              ],
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           if (_tabController.index == 0) {
             _showEnrollStudentDialog();
           } else if (_tabController.index == 1) {
-            _showAddPaymentDialog();
+            _showTakeAttendanceSheet(state);
           } else {
-            _showTakeAttendanceSheet();
+            _showAddPaymentDialog();
           }
         },
         backgroundColor: _tabController.index == 0
@@ -494,14 +511,14 @@ class _GroupDetailPageState extends State<GroupDetailPage>
         icon: Icon(_tabController.index == 0
             ? Icons.person_add_rounded
             : _tabController.index == 1
-                ? Icons.add_card_rounded
-                : Icons.edit_calendar_rounded),
+                ? Icons.edit_calendar_rounded
+                : Icons.add_card_rounded),
         label: Text(
           _tabController.index == 0
               ? 'O\'quvchi qo\'shish'
               : _tabController.index == 1
-                  ? 'To\'lov qo\'shish'
-                  : 'Davomat olish',
+                  ? 'Davomat olish'
+                  : 'To\'lov qo\'shish',
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
