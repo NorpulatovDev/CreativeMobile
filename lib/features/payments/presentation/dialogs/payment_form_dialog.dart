@@ -1,21 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/sms_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
-import '../../../enrollments/data/repositories/enrollment_repository.dart';
-import '../../../enrollments/data/datasources/enrollment_local_datasource.dart';
-import '../../../groups/data/datasources/group_local_datasource.dart';
 import '../../../groups/data/models/group_model.dart';
-import '../../../groups/data/repositories/group_repository.dart';
-import '../../../students/data/repositories/student_repository.dart';
 import '../../data/models/payment_model.dart';
 import '../bloc/payment_bloc.dart';
+import '../bloc/payment_form_cubit.dart';
 
-class PaymentFormDialog extends StatefulWidget {
+class PaymentFormDialog extends StatelessWidget {
   final int? preselectedStudentId;
   final int? preselectedGroupId;
   final PaymentModel? payment;
@@ -28,99 +25,436 @@ class PaymentFormDialog extends StatefulWidget {
   });
 
   @override
-  State<PaymentFormDialog> createState() => _PaymentFormDialogState();
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final initialMonth =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}';
+
+    return BlocProvider(
+      create: (_) => PaymentFormCubit(
+        groupRepo: getIt(),
+        groupLocal: getIt(),
+        enrollmentRepo: getIt(),
+        enrollmentLocal: getIt(),
+        studentRepo: getIt(),
+        smsService: getIt(),
+        paymentBloc: context.read<PaymentBloc>(),
+        initialMonth: initialMonth,
+        preselectedGroupId: preselectedGroupId,
+        preselectedStudentId: preselectedStudentId,
+        editing: payment,
+      )..loadGroups(
+          prefillAmount: payment?.amount,
+        ),
+      child: _PaymentFormBody(payment: payment),
+    );
+  }
 }
 
-class _PaymentFormDialogState extends State<PaymentFormDialog> {
+class _PaymentFormBody extends StatefulWidget {
+  final PaymentModel? payment;
+
+  const _PaymentFormBody({this.payment});
+
+  @override
+  State<_PaymentFormBody> createState() => _PaymentFormBodyState();
+}
+
+class _PaymentFormBodyState extends State<_PaymentFormBody> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amountController;
 
-  List<GroupModel> _groups = [];
-  List<EnrollmentModel> _groupStudents = [];
-  bool _loadingGroups = true;
-  bool _loadingStudents = false;
-  bool _submitting = false;
-  int? _loadedGroupId;
-
   bool get isEditing => widget.payment != null;
-
-  int? _selectedGroupId;
-  int? _selectedStudentId;
-  String _selectedMonth = DateFormat('yyyy-MM').format(DateTime.now());
 
   @override
   void initState() {
     super.initState();
-    if (isEditing) {
-      _amountController = TextEditingController(
-          text: widget.payment!.amount.toStringAsFixed(0));
-      _selectedGroupId = widget.payment!.groupId;
-      _selectedStudentId = widget.payment!.studentId;
-      _selectedMonth = widget.payment!.paidForMonth;
-    } else {
-      _amountController = TextEditingController();
-      _selectedGroupId = widget.preselectedGroupId;
-      _selectedStudentId = widget.preselectedStudentId;
-    }
-    _loadGroups();
-  }
-
-  Future<void> _loadGroups() async {
-    // Show cached groups immediately — dialog opens without a spinner
-    final cached = getIt<GroupLocalDataSource>().getAll();
-    if (cached.isNotEmpty) _applyGroups(cached);
-
-    // Refresh from network in the background
-    final (groups, _) = await getIt<GroupRepository>().getAll();
-    if (mounted && groups != null) _applyGroups(groups);
-  }
-
-  void _applyGroups(List<GroupModel> groups) {
-    setState(() {
-      _groups = groups;
-      _loadingGroups = false;
-    });
-    if (_selectedGroupId != null && _loadedGroupId != _selectedGroupId) {
-      _loadStudentsForGroup(_selectedGroupId!);
-      if (!isEditing) {
-        final group = _groups.where((g) => g.id == _selectedGroupId).firstOrNull;
-        if (group != null) _amountController.text = group.monthlyFee.toStringAsFixed(0);
-      }
-    }
-  }
-
-  Future<void> _loadStudentsForGroup(int groupId) async {
-    final cached = getIt<EnrollmentLocalDataSource>()
-        .getGroupStudents(groupId)
-        .where((e) => e.active)
-        .toList();
-    setState(() {
-      _loadedGroupId = groupId;
-      _groupStudents = cached;
-      _loadingStudents = cached.isEmpty;
-      if (cached.isEmpty && widget.preselectedStudentId == null && !isEditing) {
-        _selectedStudentId = null;
-      }
-    });
-    final (enrollments, _) =
-        await getIt<EnrollmentRepository>().getGroupStudents(groupId);
-    if (!mounted || _loadedGroupId != groupId) return;
-    setState(() {
-      _groupStudents =
-          (enrollments ?? cached).where((e) => e.active).toList();
-      _loadingStudents = false;
-      if (_selectedStudentId != null && !isEditing) {
-        final exists =
-            _groupStudents.any((e) => e.studentId == _selectedStudentId);
-        if (!exists) _selectedStudentId = null;
-      }
-    });
+    _amountController = TextEditingController(
+      text: widget.payment != null
+          ? widget.payment!.amount.toStringAsFixed(0)
+          : '',
+    );
   }
 
   @override
   void dispose() {
     _amountController.dispose();
     super.dispose();
+  }
+
+  void _showSettingsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('SMS ruxsati'),
+        content: const Text(
+            'SMS yuborish uchun ilova sozlamalarida ruxsat bering.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Bekor qilish'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              openAppSettings();
+            },
+            child: const Text('Sozlamalar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _submit(PaymentFormReady state) {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (state.selectedGroupId == null || state.selectedStudentId == null) {
+      return;
+    }
+    final amount = double.tryParse(_amountController.text.trim());
+    if (amount == null || amount <= 0) return;
+
+    context.read<PaymentFormCubit>().submit(
+          isEditing: isEditing,
+          paymentId: widget.payment?.id,
+          amount: amount,
+        );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<PaymentBloc, PaymentState>(
+          listener: (context, state) {
+            if (state is PaymentActionSuccess) {
+              context.read<PaymentFormCubit>().onPaymentSuccess();
+            } else if (state is PaymentError) {
+              context.read<PaymentFormCubit>().onPaymentError();
+            }
+          },
+        ),
+        BlocListener<PaymentFormCubit, PaymentFormState>(
+          listenWhen: (prev, curr) {
+            if (curr is! PaymentFormReady || prev is! PaymentFormReady) {
+              return false;
+            }
+            return curr.smsNotification != prev.smsNotification ||
+                curr.done != prev.done;
+          },
+          listener: (context, state) {
+            if (state is! PaymentFormReady) return;
+            if (state.smsNotification == SmsResult.permissionPermanentlyDenied) {
+              _showSettingsDialog(context);
+            }
+            if (state.done) {
+              Navigator.pop(context, state.smsNotification);
+            }
+          },
+        ),
+      ],
+      child: BlocBuilder<PaymentFormCubit, PaymentFormState>(
+        builder: (context, formState) {
+          final loading = formState is PaymentFormLoading;
+          final ready =
+              formState is PaymentFormReady ? formState : null;
+
+          return Dialog(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildHeader(context),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: loading || ready == null
+                          ? const SizedBox(
+                              height: 200,
+                              child: Center(
+                                  child: CircularProgressIndicator()),
+                            )
+                          : _buildForm(context, ready),
+                    ),
+                  ),
+                  _buildFooter(context, ready),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              isEditing ? Icons.edit_rounded : Icons.add_card_rounded,
+              color: const Color(0xFF8B5CF6),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isEditing ? 'To\'lovni tahrirlash' : 'Yangi to\'lov',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isEditing
+                      ? 'To\'lov ma\'lumotlarini yangilash'
+                      : 'To\'lov ma\'lumotlarini kiriting',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: AppColors.neutral500),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildForm(BuildContext context, PaymentFormReady state) {
+    final selectedGroup = state.selectedGroupId != null
+        ? state.groups
+            .where((g) => g.id == state.selectedGroupId)
+            .firstOrNull
+        : null;
+    final selectedStudent = state.selectedStudentId != null
+        ? state.groupStudents
+            .where((e) => e.studentId == state.selectedStudentId)
+            .firstOrNull
+        : null;
+
+    return Form(
+      key: _formKey,
+      child: Column(
+        children: [
+          // Group picker
+          _FormField(
+            label: 'Guruh',
+            child: _PickerTile(
+              icon: Icons.group_outlined,
+              placeholder: 'Guruhni tanlang',
+              value: selectedGroup?.name,
+              subtitle: selectedGroup != null
+                  ? '${selectedGroup.monthlyFee.toStringAsFixed(0)} so\'m/oy'
+                  : null,
+              enabled: !isEditing,
+              hasError: _formKey.currentState != null &&
+                  state.selectedGroupId == null,
+              onTap: isEditing
+                  ? null
+                  : () => _openGroupPicker(context, state),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Student picker
+          if (state.selectedGroupId != null) ...[
+            if (state.loadingStudents)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(),
+              )
+            else if (state.groupStudents.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.warningLight,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded,
+                        color: AppColors.warning),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Bu guruhda o\'quvchilar yo\'q',
+                        style: TextStyle(color: AppColors.warningDark),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              _FormField(
+                label: 'O\'quvchi',
+                child: _PickerTile(
+                  icon: Icons.person_outline_rounded,
+                  placeholder: 'O\'quvchini tanlang',
+                  value: selectedStudent?.studentName,
+                  enabled: !isEditing,
+                  hasError: _formKey.currentState != null &&
+                      state.selectedStudentId == null,
+                  onTap: isEditing
+                      ? null
+                      : () => _openStudentPicker(context, state),
+                ),
+              ),
+            const SizedBox(height: 16),
+          ],
+          // Amount
+          _FormField(
+            label: 'To\'lov miqdori (so\'m)',
+            child: TextFormField(
+              controller: _amountController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                prefixIcon: Icon(Icons.payments_outlined,
+                    color: AppColors.neutral400),
+                hintText: 'Masalan: 500000',
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Miqdorni kiriting';
+                if (double.tryParse(v) == null || double.parse(v) <= 0) {
+                  return 'To\'g\'ri miqdor kiriting';
+                }
+                return null;
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Month
+          _FormField(
+            label: 'To\'lov oyi',
+            child: DropdownButtonFormField<String>(
+              initialValue: state.selectedMonth,
+              decoration: InputDecoration(
+                prefixIcon: Icon(Icons.calendar_month_outlined,
+                    color: AppColors.neutral400),
+              ),
+              items: _generateMonths()
+                  .map((m) => DropdownMenuItem(
+                        value: m,
+                        child: Text(_formatMonth(m)),
+                      ))
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) {
+                  context.read<PaymentFormCubit>().selectMonth(v);
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooter(BuildContext context, PaymentFormReady? state) {
+    final canSubmit = state != null &&
+        !state.submitting &&
+        !state.loadingStudents &&
+        state.selectedGroupId != null &&
+        state.groupStudents.isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.neutral50,
+        borderRadius:
+            const BorderRadius.vertical(bottom: Radius.circular(24)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: state?.submitting == true
+                  ? null
+                  : () => Navigator.pop(context),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: BorderSide(color: AppColors.neutral300),
+              ),
+              child: const Text('Bekor qilish'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton(
+              onPressed:
+                  canSubmit ? () => _submit(state) : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF8B5CF6),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: state?.submitting == true
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text(isEditing ? 'Yangilash' : 'To\'lovni saqlash'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openGroupPicker(BuildContext context, PaymentFormReady state) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SearchableGroupPicker(
+        groups: state.groups,
+        selectedId: state.selectedGroupId,
+        onSelected: (group) {
+          context.read<PaymentFormCubit>().selectGroup(
+                group,
+                onAmountPrefill: (fee) {
+                  _amountController.text = fee.toStringAsFixed(0);
+                },
+              );
+        },
+      ),
+    );
+  }
+
+  void _openStudentPicker(BuildContext context, PaymentFormReady state) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SearchableStudentPicker(
+        enrollments: state.groupStudents,
+        selectedId: state.selectedStudentId,
+        onSelected: (enrollment) {
+          context.read<PaymentFormCubit>().selectStudent(enrollment.studentId);
+        },
+      ),
+    );
   }
 
   List<String> _generateMonths() {
@@ -131,351 +465,17 @@ class _PaymentFormDialogState extends State<PaymentFormDialog> {
     });
   }
 
-  String _formatMonth(String month) {
+  static String _formatMonth(String month) {
     final parts = month.split('-');
-    const monthNames = [
+    const names = [
       '', 'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
       'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr',
     ];
-    return '${monthNames[int.parse(parts[1])]} ${parts[0]}';
-  }
-
-  void _openGroupPicker() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _SearchableGroupPicker(
-        groups: _groups,
-        selectedId: _selectedGroupId,
-        onSelected: (group) {
-          setState(() {
-            _selectedGroupId = group.id;
-            _amountController.text = group.monthlyFee.toStringAsFixed(0);
-          });
-          _loadStudentsForGroup(group.id);
-        },
-      ),
-    );
-  }
-
-  void _openStudentPicker() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _SearchableStudentPicker(
-        enrollments: _groupStudents,
-        selectedId: _selectedStudentId,
-        onSelected: (enrollment) =>
-            setState(() => _selectedStudentId = enrollment.studentId),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedGroup = _selectedGroupId != null
-        ? _groups.where((g) => g.id == _selectedGroupId).firstOrNull
-        : null;
-    final selectedStudent = _selectedStudentId != null
-        ? _groupStudents
-            .where((e) => e.studentId == _selectedStudentId)
-            .firstOrNull
-        : null;
-
-    return BlocListener<PaymentBloc, PaymentState>(
-      listener: (context, state) {
-        if (state is PaymentActionSuccess) {
-          Navigator.pop(context, true);
-        } else if (state is PaymentError) {
-          setState(() => _submitting = false);
-        }
-      },
-      child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 400),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        isEditing ? Icons.edit_rounded : Icons.add_card_rounded,
-                        color: const Color(0xFF8B5CF6),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            isEditing ? 'To\'lovni tahrirlash' : 'Yangi to\'lov',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
-                                ?.copyWith(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            isEditing
-                                ? 'To\'lov ma\'lumotlarini yangilash'
-                                : 'To\'lov ma\'lumotlarini kiriting',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: AppColors.neutral500),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Form
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: _loadingGroups
-                      ? const SizedBox(
-                          height: 200,
-                          child: Center(child: CircularProgressIndicator()))
-                      : Form(
-                          key: _formKey,
-                          child: Column(
-                            children: [
-                              // Group picker
-                              _FormField(
-                                label: 'Guruh',
-                                child: _PickerTile(
-                                  icon: Icons.group_outlined,
-                                  placeholder: 'Guruhni tanlang',
-                                  value: selectedGroup?.name,
-                                  subtitle: selectedGroup != null
-                                      ? '${selectedGroup.monthlyFee.toStringAsFixed(0)} so\'m/oy'
-                                      : null,
-                                  enabled: !isEditing,
-                                  hasError: _formKey.currentState != null &&
-                                      _selectedGroupId == null,
-                                  onTap: isEditing ? null : _openGroupPicker,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              // Student picker
-                              if (_selectedGroupId != null) ...[
-                                if (_loadingStudents)
-                                  const Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: CircularProgressIndicator(),
-                                  )
-                                else if (_groupStudents.isEmpty)
-                                  Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.warningLight,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.warning_amber_rounded,
-                                            color: AppColors.warning),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Text(
-                                            'Bu guruhda o\'quvchilar yo\'q',
-                                            style: TextStyle(
-                                                color: AppColors.warningDark),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                else
-                                  _FormField(
-                                    label: 'O\'quvchi',
-                                    child: _PickerTile(
-                                      icon: Icons.person_outline_rounded,
-                                      placeholder: 'O\'quvchini tanlang',
-                                      value: selectedStudent?.studentName,
-                                      enabled: !isEditing,
-                                      hasError: _formKey.currentState != null &&
-                                          _selectedStudentId == null,
-                                      onTap:
-                                          isEditing ? null : _openStudentPicker,
-                                    ),
-                                  ),
-                                const SizedBox(height: 16),
-                              ],
-                              // Amount
-                              _FormField(
-                                label: 'To\'lov miqdori (so\'m)',
-                                child: TextFormField(
-                                  controller: _amountController,
-                                  keyboardType: TextInputType.number,
-                                  decoration: InputDecoration(
-                                    prefixIcon: Icon(Icons.payments_outlined,
-                                        color: AppColors.neutral400),
-                                    hintText: 'Masalan: 500000',
-                                  ),
-                                  validator: (v) {
-                                    if (v == null || v.trim().isEmpty) {
-                                      return 'Miqdorni kiriting';
-                                    }
-                                    if (double.tryParse(v) == null ||
-                                        double.parse(v) <= 0) {
-                                      return 'To\'g\'ri miqdor kiriting';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              // Month
-                              _FormField(
-                                label: 'To\'lov oyi',
-                                child: DropdownButtonFormField<String>(
-                                  initialValue: _selectedMonth,
-                                  decoration: InputDecoration(
-                                    prefixIcon: Icon(
-                                        Icons.calendar_month_outlined,
-                                        color: AppColors.neutral400),
-                                  ),
-                                  items: _generateMonths()
-                                      .map((m) => DropdownMenuItem(
-                                            value: m,
-                                            child: Text(_formatMonth(m)),
-                                          ))
-                                      .toList(),
-                                  onChanged: (v) {
-                                    if (v != null) {
-                                      setState(() => _selectedMonth = v);
-                                    }
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                ),
-              ),
-              // Footer
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppColors.neutral50,
-                  borderRadius:
-                      const BorderRadius.vertical(bottom: Radius.circular(24)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed:
-                            _submitting ? null : () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: BorderSide(color: AppColors.neutral300),
-                        ),
-                        child: const Text('Bekor qilish'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _loadingGroups ||
-                                _loadingStudents ||
-                                _selectedGroupId == null ||
-                                _groupStudents.isEmpty ||
-                                _submitting
-                            ? null
-                            : _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8B5CF6),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: _submitting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white),
-                              )
-                            : Text(isEditing
-                                ? 'Yangilash'
-                                : 'To\'lovni saqlash'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    if (_selectedGroupId == null || _selectedStudentId == null) {
-      setState(() {});
-      return;
-    }
-    setState(() => _submitting = true);
-    try {
-      final bloc = context.read<PaymentBloc>();
-      if (isEditing) {
-        bloc.add(PaymentUpdate(
-          id: widget.payment!.id,
-          studentId: _selectedStudentId!,
-          groupId: _selectedGroupId!,
-          amount: double.parse(_amountController.text.trim()),
-          paidForMonth: _selectedMonth,
-        ));
-      } else {
-        final amount = _amountController.text.trim();
-        final month = _selectedMonth;
-        final (student, _) =
-            await getIt<StudentRepository>().getById(_selectedStudentId!);
-        bloc.add(PaymentCreate(
-          studentId: _selectedStudentId!,
-          groupId: _selectedGroupId!,
-          amount: double.parse(amount),
-          paidForMonth: month,
-        ));
-        if (student != null) {
-          await getIt<SmsService>().send(
-            student.parentPhoneNumber,
-            "Assalomu alaykum!\nCreative O'quv Markazi ma'muriyati sizga ma'lum qiladiki, ${student.fullName}ning ${_formatMonth(month)} oyi uchun $amount so'm to'lovi qabul qilindi.\nRahmat!",
-          );
-        }
-        return;
-      }
-      Navigator.pop(context, true);
-    } catch (_) {
-      if (mounted) setState(() => _submitting = false);
-    }
+    return '${names[int.parse(parts[1])]} ${parts[0]}';
   }
 }
 
-// ─── Picker tile (replaces DropdownButtonFormField) ──────────────────────────
+// ─── Picker tile ──────────────────────────────────────────────────────────────
 
 class _PickerTile extends StatelessWidget {
   final IconData icon;
@@ -499,8 +499,7 @@ class _PickerTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasValue = value != null;
-    final borderColor =
-        hasError ? AppColors.error : AppColors.neutral300;
+    final borderColor = hasError ? AppColors.error : AppColors.neutral300;
 
     return GestureDetector(
       onTap: enabled ? onTap : null,
@@ -515,7 +514,8 @@ class _PickerTile extends StatelessWidget {
           children: [
             Icon(icon,
                 size: 20,
-                color: hasValue ? AppColors.neutral600 : AppColors.neutral400),
+                color:
+                    hasValue ? AppColors.neutral600 : AppColors.neutral400),
             const SizedBox(width: 12),
             Expanded(
               child: hasValue
@@ -532,7 +532,8 @@ class _PickerTile extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(subtitle!,
                               style: TextStyle(
-                                  fontSize: 12, color: AppColors.neutral500)),
+                                  fontSize: 12,
+                                  color: AppColors.neutral500)),
                         ],
                       ],
                     )
@@ -590,8 +591,8 @@ class _SearchableGroupPickerState extends State<_SearchableGroupPicker> {
         color: AppColors.surfaceLight,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -688,7 +689,8 @@ class _SearchableGroupPickerState extends State<_SearchableGroupPicker> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+                            color: const Color(0xFF8B5CF6)
+                                .withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Center(
@@ -711,7 +713,8 @@ class _SearchableGroupPickerState extends State<_SearchableGroupPicker> {
                         subtitle: Text(
                             '${group.monthlyFee.toStringAsFixed(0)} so\'m/oy · ${group.studentsCount} o\'quvchi',
                             style: TextStyle(
-                                fontSize: 12, color: AppColors.neutral500)),
+                                fontSize: 12,
+                                color: AppColors.neutral500)),
                         trailing: isSelected
                             ? const Icon(Icons.check_circle_rounded,
                                 color: Color(0xFF8B5CF6))
@@ -719,7 +722,8 @@ class _SearchableGroupPickerState extends State<_SearchableGroupPicker> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         tileColor: isSelected
-                            ? const Color(0xFF8B5CF6).withValues(alpha: 0.05)
+                            ? const Color(0xFF8B5CF6)
+                                .withValues(alpha: 0.05)
                             : null,
                       );
                     },
@@ -750,7 +754,8 @@ class _SearchableStudentPicker extends StatefulWidget {
       _SearchableStudentPickerState();
 }
 
-class _SearchableStudentPickerState extends State<_SearchableStudentPicker> {
+class _SearchableStudentPickerState
+    extends State<_SearchableStudentPicker> {
   final _searchController = TextEditingController();
   String _query = '';
 
@@ -773,8 +778,8 @@ class _SearchableStudentPickerState extends State<_SearchableStudentPicker> {
         color: AppColors.surfaceLight,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -920,7 +925,7 @@ class _FormField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: TextStyle(
+            style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: AppColors.neutral700)),
