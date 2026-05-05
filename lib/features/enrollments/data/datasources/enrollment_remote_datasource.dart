@@ -7,6 +7,7 @@ abstract class EnrollmentRemoteDataSource {
   Future<List<EnrollmentModel>> getStudentGroups(int studentId);
   Future<List<EnrollmentModel>> getStudentActiveGroups(int studentId);
   Future<List<EnrollmentModel>> getGroupStudents(int groupId);
+  Future<void> transferStudents(TransferRequest request);
 }
 
 class EnrollmentRemoteDataSourceImpl implements EnrollmentRemoteDataSource {
@@ -53,5 +54,13 @@ class EnrollmentRemoteDataSourceImpl implements EnrollmentRemoteDataSource {
     return (response.data ?? [])
         .map((json) => EnrollmentModel.fromJson(json as Map<String, dynamic>))
         .toList();
+  }
+
+  @override
+  Future<void> transferStudents(TransferRequest request) async {
+    await _apiClient.post<void>(
+      '/api/enrollments/transfer',
+      data: request.toJson(),
+    );
   }
 }

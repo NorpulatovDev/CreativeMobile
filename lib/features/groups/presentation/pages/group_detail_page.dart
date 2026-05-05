@@ -13,7 +13,9 @@ import '../bloc/enroll_student_cubit.dart';
 import '../bloc/group_detail_cubit.dart';
 import '../bloc/group_payments_cubit.dart';
 import '../bloc/group_students_cubit.dart';
+import '../bloc/transfer_student_cubit.dart';
 import '../dialogs/enroll_student_dialog.dart';
+import '../dialogs/transfer_student_dialog.dart';
 import '../widgets/year_month_picker.dart';
 import 'tabs/group_attendance_tab.dart';
 import 'tabs/group_payments_tab.dart';
@@ -36,6 +38,10 @@ class _GroupDetailPageState extends State<GroupDetailPage>
   late final GroupPaymentsCubit _paymentsCubit;
   late final AttendanceBloc _attendanceBloc;
   late final EnrollStudentCubit _enrollStudentCubit;
+  late final TransferStudentCubit _transferStudentCubit;
+
+  bool _isTransferMode = false;
+  final Set<int> _selectedStudentIds = {};
 
   @override
   void initState() {
@@ -56,6 +62,11 @@ class _GroupDetailPageState extends State<GroupDetailPage>
       enrollmentLocal: getIt(),
       groupId: widget.groupId,
     );
+    _transferStudentCubit = TransferStudentCubit(
+      groupRepository: getIt(),
+      enrollmentRepository: getIt(),
+      currentGroupId: widget.groupId,
+    );
     _detailCubit.loadGroup();
   }
 
@@ -67,7 +78,49 @@ class _GroupDetailPageState extends State<GroupDetailPage>
     _paymentsCubit.close();
     _attendanceBloc.close();
     _enrollStudentCubit.close();
+    _transferStudentCubit.close();
     super.dispose();
+  }
+
+  void _enterTransferMode() => setState(() {
+        _isTransferMode = true;
+        _selectedStudentIds.clear();
+      });
+
+  void _exitTransferMode() => setState(() {
+        _isTransferMode = false;
+        _selectedStudentIds.clear();
+      });
+
+  void _toggleSelection(int studentId) => setState(() {
+        if (_selectedStudentIds.contains(studentId)) {
+          _selectedStudentIds.remove(studentId);
+        } else {
+          _selectedStudentIds.add(studentId);
+        }
+      });
+
+  void _showTransferDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => BlocProvider.value(
+        value: _transferStudentCubit,
+        child: TransferStudentDialog(
+          studentIds: _selectedStudentIds.toList(),
+          onSuccess: () {
+            _exitTransferMode();
+            _studentsCubit.reload();
+            _showSnackBar(
+              'O\'quvchilar muvaffaqiyatli o\'tkazildi',
+              AppColors.success,
+              Icons.check_circle_outline,
+            );
+          },
+          onError: (message) =>
+              _showSnackBar(message, AppColors.error, Icons.error_outline),
+        ),
+      ),
+    );
   }
 
   void _showSnackBar(String message, Color backgroundColor, IconData icon) {
@@ -194,7 +247,11 @@ class _GroupDetailPageState extends State<GroupDetailPage>
       builder: (dialogContext) => BlocProvider.value(
         value: _enrollStudentCubit,
         child: EnrollStudentDialog(
-          onEnrolled: _studentsCubit.reload,
+          onEnrolled: () {
+            _studentsCubit.reload();
+            _showSnackBar("O'quvchi muvaffaqiyatli qo'shildi",
+                AppColors.success, Icons.check_circle_outline);
+          },
           onError: (message) =>
               _showSnackBar(message, AppColors.error, Icons.error_outline),
         ),
@@ -226,6 +283,7 @@ class _GroupDetailPageState extends State<GroupDetailPage>
         BlocProvider.value(value: _paymentsCubit),
         BlocProvider.value(value: _attendanceBloc),
         BlocProvider.value(value: _enrollStudentCubit),
+        BlocProvider.value(value: _transferStudentCubit),
       ],
       child: BlocListener<GroupDetailCubit, GroupDetailState>(
         listenWhen: (prev, curr) {
@@ -359,15 +417,49 @@ class _GroupDetailPageState extends State<GroupDetailPage>
           ],
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: IconButton(
-              onPressed: () {},
-              icon: const Icon(Icons.more_vert_rounded),
+          if (_tabController.index == 0 && !_isTransferMode)
+            IconButton(
+              onPressed: _enterTransferMode,
+              icon: const Icon(Icons.swap_horiz_rounded),
               splashRadius: 22,
-              tooltip: 'Boshqa',
+              tooltip: 'O\'tkazish',
             ),
-          ),
+          if (_isTransferMode) ...[
+            if (_selectedStudentIds.isNotEmpty)
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${_selectedStudentIds.length} ta',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                        fontSize: 13),
+                  ),
+                ),
+              ),
+            TextButton(
+              onPressed: _exitTransferMode,
+              child: const Text('Bekor qilish',
+                  style: TextStyle(color: AppColors.error)),
+            ),
+          ],
+          if (!_isTransferMode)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: IconButton(
+                onPressed: () {},
+                icon: const Icon(Icons.more_vert_rounded),
+                splashRadius: 22,
+                tooltip: 'Boshqa',
+              ),
+            ),
         ],
         flexibleSpace: Container(
           decoration: BoxDecoration(
@@ -478,6 +570,9 @@ class _GroupDetailPageState extends State<GroupDetailPage>
                 GroupStudentsTab(
                   groupId: widget.groupId,
                   onRemoveStudent: _confirmRemoveStudent,
+                  isTransferMode: _isTransferMode,
+                  selectedStudentIds: _selectedStudentIds,
+                  onToggleSelection: _toggleSelection,
                 ),
                 GroupAttendanceTab(
                   bloc: _attendanceBloc,
@@ -491,37 +586,53 @@ class _GroupDetailPageState extends State<GroupDetailPage>
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          if (_tabController.index == 0) {
-            _showEnrollStudentDialog();
-          } else if (_tabController.index == 1) {
-            _showTakeAttendanceSheet(state);
-          } else {
-            _showAddPaymentDialog();
-          }
-        },
-        backgroundColor: _tabController.index == 0
-            ? AppColors.success
-            : _tabController.index == 1
-                ? const Color(0xFF8B5CF6)
-                : const Color(0xFF0891B2),
-        foregroundColor: Colors.white,
-        elevation: 4,
-        icon: Icon(_tabController.index == 0
-            ? Icons.person_add_rounded
-            : _tabController.index == 1
-                ? Icons.edit_calendar_rounded
-                : Icons.add_card_rounded),
-        label: Text(
-          _tabController.index == 0
-              ? 'O\'quvchi qo\'shish'
-              : _tabController.index == 1
-                  ? 'Davomat olish'
-                  : 'To\'lov qo\'shish',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-      ),
+      floatingActionButton: _isTransferMode
+          ? FloatingActionButton.extended(
+              onPressed: _selectedStudentIds.isEmpty ? null : _showTransferDialog,
+              backgroundColor: _selectedStudentIds.isEmpty
+                  ? AppColors.neutral300
+                  : AppColors.primary,
+              foregroundColor: Colors.white,
+              elevation: 4,
+              icon: const Icon(Icons.swap_horiz_rounded),
+              label: Text(
+                _selectedStudentIds.isEmpty
+                    ? 'O\'quvchi tanlang'
+                    : '${_selectedStudentIds.length} ta o\'quvchini o\'tkazish',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            )
+          : FloatingActionButton.extended(
+              onPressed: () {
+                if (_tabController.index == 0) {
+                  _showEnrollStudentDialog();
+                } else if (_tabController.index == 1) {
+                  _showTakeAttendanceSheet(state);
+                } else {
+                  _showAddPaymentDialog();
+                }
+              },
+              backgroundColor: _tabController.index == 0
+                  ? AppColors.success
+                  : _tabController.index == 1
+                      ? const Color(0xFF8B5CF6)
+                      : const Color(0xFF0891B2),
+              foregroundColor: Colors.white,
+              elevation: 4,
+              icon: Icon(_tabController.index == 0
+                  ? Icons.person_add_rounded
+                  : _tabController.index == 1
+                      ? Icons.edit_calendar_rounded
+                      : Icons.add_card_rounded),
+              label: Text(
+                _tabController.index == 0
+                    ? 'O\'quvchi qo\'shish'
+                    : _tabController.index == 1
+                        ? 'Davomat olish'
+                        : 'To\'lov qo\'shish',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
     );
   }
 }

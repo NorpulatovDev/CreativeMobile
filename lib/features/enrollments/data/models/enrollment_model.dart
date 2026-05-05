@@ -49,3 +49,21 @@ class EnrollmentRequest {
 
   Map<String, dynamic> toJson() => _$EnrollmentRequestToJson(this);
 }
+
+class TransferRequest {
+  final List<int> studentIds;
+  final int fromGroupId;
+  final int toGroupId;
+
+  const TransferRequest({
+    required this.studentIds,
+    required this.fromGroupId,
+    required this.toGroupId,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'studentIds': studentIds,
+        'fromGroupId': fromGroupId,
+        'toGroupId': toGroupId,
+      };
+}

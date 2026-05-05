@@ -14,6 +14,7 @@ abstract class EnrollmentRepository {
   Future<Failure?> removeStudentFromGroup(int studentId, int groupId);
   Future<(List<EnrollmentModel>?, Failure?)> getStudentGroups(int studentId);
   Future<(List<EnrollmentModel>?, Failure?)> getGroupStudents(int groupId);
+  Future<Failure?> transferStudents(List<int> studentIds, int fromGroupId, int toGroupId);
 }
 
 class EnrollmentRepositoryImpl implements EnrollmentRepository {
@@ -141,6 +142,34 @@ class EnrollmentRepositoryImpl implements EnrollmentRepository {
     final cached = _localDataSource.getStudentGroups(studentId);
     if (cached.isNotEmpty) return (cached, null);
     return (null, const CacheFailure('No cached enrollments available'));
+  }
+
+  @override
+  Future<Failure?> transferStudents(
+      List<int> studentIds, int fromGroupId, int toGroupId) async {
+    if (!_connectivity.isOnline) {
+      return const ServerFailure(
+          'O\'tkazish uchun internet aloqasi kerak');
+    }
+    try {
+      await _remoteDataSource.transferStudents(
+        TransferRequest(
+          studentIds: studentIds,
+          fromGroupId: fromGroupId,
+          toGroupId: toGroupId,
+        ),
+      );
+      for (final studentId in studentIds) {
+        await _localDataSource.removeByStudentAndGroup(studentId, fromGroupId);
+      }
+      return null;
+    } on DioException catch (e) {
+      final message =
+          e.response?.data?['message'] ?? 'O\'tkazishda xatolik yuz berdi';
+      return ServerFailure(message);
+    } catch (e) {
+      return UnknownFailure(e.toString());
+    }
   }
 
   @override

@@ -11,16 +11,24 @@ import '../../widgets/student_card.dart';
 class GroupStudentsTab extends StatelessWidget {
   final int groupId;
   final ValueChanged<StudentModel> onRemoveStudent;
+  final bool isTransferMode;
+  final Set<int> selectedStudentIds;
+  final ValueChanged<int> onToggleSelection;
 
   const GroupStudentsTab({
     super.key,
     required this.groupId,
     required this.onRemoveStudent,
+    this.isTransferMode = false,
+    this.selectedStudentIds = const {},
+    required this.onToggleSelection,
   });
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<GroupStudentsCubit, GroupStudentsState>(
+      buildWhen: (prev, curr) =>
+          prev.runtimeType != curr.runtimeType || curr is GroupStudentsLoaded,
       builder: (context, state) {
         if (state is GroupStudentsInitial || state is GroupStudentsLoading) {
           return const Center(
@@ -64,7 +72,7 @@ class GroupStudentsTab extends StatelessWidget {
           onRefresh: context.read<GroupStudentsCubit>().reload,
           color: AppColors.success,
           child: ListView.builder(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
             itemCount: students.length,
             itemBuilder: (context, index) {
               final student = students[index];
@@ -84,9 +92,13 @@ class GroupStudentsTab extends StatelessWidget {
                 child: StudentCard(
                   student: student,
                   groupInfo: groupInfo,
-                  onTap: () =>
-                      context.push('${Routes.students}/${student.id}'),
-                  onLongPress: () => onRemoveStudent(student),
+                  isSelectionMode: isTransferMode,
+                  isSelected: selectedStudentIds.contains(student.id),
+                  onTap: isTransferMode
+                      ? () => onToggleSelection(student.id)
+                      : () => context.push('${Routes.students}/${student.id}'),
+                  onLongPress:
+                      isTransferMode ? null : () => onRemoveStudent(student),
                 ),
               );
             },

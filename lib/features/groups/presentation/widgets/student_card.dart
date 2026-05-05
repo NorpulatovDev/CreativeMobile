@@ -7,14 +7,18 @@ class StudentCard extends StatelessWidget {
   final StudentModel student;
   final GroupInfo groupInfo;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback? onLongPress;
+  final bool isSelectionMode;
+  final bool isSelected;
 
   const StudentCard({
     super.key,
     required this.student,
     required this.groupInfo,
     required this.onTap,
-    required this.onLongPress,
+    this.onLongPress,
+    this.isSelectionMode = false,
+    this.isSelected = false,
   });
 
   @override
@@ -47,6 +51,11 @@ class StudentCard extends StatelessWidget {
       statusText = '${amountPaid.toStringAsFixed(0)} so\'m';
     }
 
+    final borderColor = isSelectionMode && isSelected
+        ? AppColors.primary
+        : statusColor.withValues(alpha: 0.3);
+    final borderWidth = isSelectionMode && isSelected ? 2.0 : 2.0;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -56,12 +65,14 @@ class StudentCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.surfaceLight,
+            color: isSelectionMode && isSelected
+                ? AppColors.primary.withValues(alpha: 0.05)
+                : AppColors.surfaceLight,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: statusColor.withOpacity(0.3), width: 2),
+            border: Border.all(color: borderColor, width: borderWidth),
             boxShadow: [
               BoxShadow(
-                color: AppColors.neutral900.withOpacity(0.03),
+                color: AppColors.neutral900.withValues(alpha: 0.03),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
@@ -69,6 +80,29 @@ class StudentCard extends StatelessWidget {
           ),
           child: Row(
             children: [
+              if (isSelectionMode)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSelected ? AppColors.primary : Colors.transparent,
+                      border: Border.all(
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.neutral400,
+                        width: 2,
+                      ),
+                    ),
+                    child: isSelected
+                        ? const Icon(Icons.check_rounded,
+                            size: 14, color: Colors.white)
+                        : null,
+                  ),
+                ),
               Container(
                 width: 48,
                 height: 48,
@@ -128,7 +162,8 @@ class StudentCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: AppColors.neutral400),
+              if (!isSelectionMode)
+                Icon(Icons.chevron_right_rounded, color: AppColors.neutral400),
             ],
           ),
         ),
