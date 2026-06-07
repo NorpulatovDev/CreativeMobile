@@ -1,11 +1,8 @@
 import 'package:dio/dio.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/models/paged_response.dart';
 import '../../../../core/network/connectivity_service.dart';
-import '../../../../core/offline/sync_queue.dart';
-import '../../../../core/offline/temp_id_generator.dart';
 import '../datasources/payment_local_datasource.dart';
 import '../datasources/payment_remote_datasource.dart';
 import '../models/payment_model.dart';
@@ -27,15 +24,11 @@ class PaymentRepositoryImpl implements PaymentRepository {
   final PaymentRemoteDataSource _remoteDataSource;
   final PaymentLocalDataSource _localDataSource;
   final ConnectivityService _connectivity;
-  final SyncQueue _syncQueue;
-  final TempIdGenerator _tempIdGenerator;
 
   PaymentRepositoryImpl(
     this._remoteDataSource,
     this._localDataSource,
     this._connectivity,
-    this._syncQueue,
-    this._tempIdGenerator,
   );
 
   @override
@@ -175,115 +168,59 @@ class PaymentRepositoryImpl implements PaymentRepository {
 
   @override
   Future<(PaymentModel?, Failure?)> create(PaymentRequest request) async {
-    if (_connectivity.isOnline) {
-      try {
-        final payment = await _remoteDataSource.create(request);
-        await _localDataSource.cacheSingle(payment);
-        return (payment, null);
-      } on DioException {
-        return _createOffline(request);
-      } catch (e) {
-        return (null, UnknownFailure(e.toString()));
-      }
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('To\'lov qo\'shish uchun internet kerak'));
     }
-    return _createOffline(request);
-  }
-
-  Future<(PaymentModel?, Failure?)> _createOffline(
-      PaymentRequest request) async {
-    final tempId = _tempIdGenerator.next();
-    final now = DateTime.now();
-    final payment = PaymentModel(
-      id: tempId,
-      studentId: request.studentId,
-      studentName: '', // Unknown offline
-      groupId: request.groupId,
-      groupName: '', // Unknown offline
-      amount: request.amount,
-      paidForMonth: request.paidForMonth,
-      paidAt: now,
-    );
-    await _localDataSource.cacheSingle(payment);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'payment',
-      operationType: 'create',
-      entityId: tempId,
-      payload: request.toJson(),
-      createdAt: now,
-    ));
-    return (payment, null);
+    try {
+      final payment = await _remoteDataSource.create(request);
+      await _localDataSource.cacheSingle(payment);
+      return (payment, null);
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'To\'lov qo\'shishda xatolik yuz berdi';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override
   Future<(PaymentModel?, Failure?)> update(
       int id, PaymentRequest request) async {
-    if (_connectivity.isOnline) {
-      try {
-        final payment = await _remoteDataSource.update(id, request);
-        await _localDataSource.cacheSingle(payment);
-        return (payment, null);
-      } on DioException {
-        return _updateOffline(id, request);
-      } catch (e) {
-        return (null, UnknownFailure(e.toString()));
-      }
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('To\'lovni yangilash uchun internet kerak'));
     }
-    return _updateOffline(id, request);
-  }
-
-  Future<(PaymentModel?, Failure?)> _updateOffline(
-      int id, PaymentRequest request) async {
-    final existing = _localDataSource.getById(id);
-    final now = DateTime.now();
-    final updated = PaymentModel(
-      id: id,
-      studentId: request.studentId,
-      studentName: existing?.studentName ?? '',
-      groupId: request.groupId,
-      groupName: existing?.groupName ?? '',
-      amount: request.amount,
-      paidForMonth: request.paidForMonth,
-      paidAt: existing?.paidAt ?? now,
-    );
-    await _localDataSource.cacheSingle(updated);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'payment',
-      operationType: 'update',
-      entityId: id,
-      payload: request.toJson(),
-      createdAt: now,
-    ));
-    return (updated, null);
+    try {
+      final payment = await _remoteDataSource.update(id, request);
+      await _localDataSource.cacheSingle(payment);
+      return (payment, null);
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'To\'lovni yangilashda xatolik yuz berdi';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override
   Future<Failure?> delete(int id) async {
-    if (_connectivity.isOnline) {
-      try {
-        await _remoteDataSource.delete(id);
-        await _localDataSource.remove(id);
-        return null;
-      } on DioException {
-        return _deleteOffline(id);
-      } catch (e) {
-        return UnknownFailure(e.toString());
-      }
+    if (!_connectivity.isOnline) {
+      return const ServerFailure('To\'lovni o\'chirish uchun internet kerak');
     }
-    return _deleteOffline(id);
-  }
-
-  Future<Failure?> _deleteOffline(int id) async {
-    await _localDataSource.remove(id);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'payment',
-      operationType: 'delete',
-      entityId: id,
-      payload: null,
-      createdAt: DateTime.now(),
-    ));
-    return null;
+    try {
+      await _remoteDataSource.delete(id);
+      await _localDataSource.remove(id);
+      return null;
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'To\'lovni o\'chirishda xatolik yuz berdi';
+      return ServerFailure(message);
+    } catch (e) {
+      return UnknownFailure(e.toString());
+    }
   }
 }

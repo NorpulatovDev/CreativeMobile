@@ -2,7 +2,19 @@ import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
+import '../branch/branch_selection_cubit.dart';
 import '../network/connectivity_service.dart';
+
+// Branches
+import '../../features/branches/data/datasources/branch_local_datasource.dart';
+import '../../features/branches/data/datasources/branch_remote_datasource.dart';
+import '../../features/branches/data/repositories/branch_repository.dart';
+import '../../features/branches/presentation/bloc/branch_bloc.dart';
+
+// Admins
+import '../../features/admins/data/datasources/admin_remote_datasource.dart';
+import '../../features/admins/data/repositories/admin_repository.dart';
+import '../../features/admins/presentation/bloc/admin_bloc.dart';
 import '../offline/id_mapping.dart';
 import '../offline/sync_engine.dart';
 import '../offline/sync_queue.dart';
@@ -68,8 +80,11 @@ import '../../features/reports/presentation/bloc/report_bloc.dart';
 import '../../features/inquiries/data/datasources/inquiry_remote_datasource.dart';
 import '../../features/inquiries/data/datasources/inquiry_local_datasource.dart';
 import '../../features/inquiries/data/datasources/inquiry_sync_handler.dart';
+import '../../features/inquiries/data/datasources/inquiry_group_remote_datasource.dart';
 import '../../features/inquiries/data/repositories/inquiry_repository.dart';
+import '../../features/inquiries/data/repositories/inquiry_group_repository.dart';
 import '../../features/inquiries/presentation/bloc/inquiry_bloc.dart';
+import '../../features/inquiries/presentation/bloc/inquiry_group_bloc.dart';
 
 final getIt = GetIt.instance;
 
@@ -144,7 +159,7 @@ Future<void> configureDependencies() async {
     TeacherRemoteDataSourceImpl(getIt()),
   );
   getIt.registerSingleton<TeacherRepository>(
-    TeacherRepositoryImpl(getIt(), getIt(), getIt(), getIt(), getIt()),
+    TeacherRepositoryImpl(getIt(), getIt(), getIt()),
   );
   getIt.registerFactory<TeacherBloc>(() => TeacherBloc(getIt()));
 
@@ -153,7 +168,7 @@ Future<void> configureDependencies() async {
     GroupRemoteDataSourceImpl(getIt()),
   );
   getIt.registerSingleton<GroupRepository>(
-    GroupRepositoryImpl(getIt(), getIt(), getIt(), getIt(), getIt()),
+    GroupRepositoryImpl(getIt(), getIt(), getIt()),
   );
   getIt.registerFactory<GroupBloc>(() => GroupBloc(getIt()));
 
@@ -162,7 +177,7 @@ Future<void> configureDependencies() async {
     StudentRemoteDataSourceImpl(getIt()),
   );
   getIt.registerSingleton<StudentRepository>(
-    StudentRepositoryImpl(getIt(), getIt(), getIt(), getIt(), getIt()),
+    StudentRepositoryImpl(getIt(), getIt(), getIt()),
   );
   getIt.registerFactory<StudentBloc>(() => StudentBloc(getIt()));
 
@@ -171,7 +186,7 @@ Future<void> configureDependencies() async {
     EnrollmentRemoteDataSourceImpl(getIt()),
   );
   getIt.registerSingleton<EnrollmentRepository>(
-    EnrollmentRepositoryImpl(getIt(), getIt(), getIt(), getIt(), getIt()),
+    EnrollmentRepositoryImpl(getIt(), getIt(), getIt()),
   );
 
   // Payments Feature
@@ -179,7 +194,7 @@ Future<void> configureDependencies() async {
     PaymentRemoteDataSourceImpl(getIt()),
   );
   getIt.registerSingleton<PaymentRepository>(
-    PaymentRepositoryImpl(getIt(), getIt(), getIt(), getIt(), getIt()),
+    PaymentRepositoryImpl(getIt(), getIt(), getIt()),
   );
   getIt.registerFactory<PaymentBloc>(() => PaymentBloc(getIt()));
 
@@ -188,7 +203,7 @@ Future<void> configureDependencies() async {
     AttendanceRemoteDataSourceImpl(getIt()),
   );
   getIt.registerSingleton<AttendanceRepository>(
-    AttendanceRepositoryImpl(getIt(), getIt(), getIt(), getIt(), getIt()),
+    AttendanceRepositoryImpl(getIt(), getIt(), getIt()),
   );
   getIt.registerFactory<AttendanceBloc>(() => AttendanceBloc(getIt()));
 
@@ -206,9 +221,18 @@ Future<void> configureDependencies() async {
     InquiryRemoteDataSourceImpl(getIt()),
   );
   getIt.registerSingleton<InquiryRepository>(
-    InquiryRepositoryImpl(getIt(), getIt(), getIt(), getIt(), getIt()),
+    InquiryRepositoryImpl(getIt(), getIt(), getIt()),
   );
   getIt.registerFactory<InquiryBloc>(() => InquiryBloc(getIt()));
+
+  // Inquiry Groups Feature
+  getIt.registerSingleton<InquiryGroupRemoteDataSource>(
+    InquiryGroupRemoteDataSourceImpl(getIt()),
+  );
+  getIt.registerSingleton<InquiryGroupRepository>(
+    InquiryGroupRepositoryImpl(getIt(), getIt()),
+  );
+  getIt.registerFactory<InquiryGroupBloc>(() => InquiryGroupBloc(getIt()));
 
   // Sync Engine
   final syncEngine = SyncEngine(
@@ -241,6 +265,35 @@ Future<void> configureDependencies() async {
   // SMS
   getIt.registerSingleton<SmsService>(SmsService());
 
+  // Branches Feature (super admin only, no offline)
+  final branchLocal = BranchLocalDataSource();
+  await branchLocal.initialize();
+  getIt.registerSingleton<BranchLocalDataSource>(branchLocal);
+
+  getIt.registerSingleton<BranchRemoteDataSource>(
+    BranchRemoteDataSourceImpl(getIt()),
+  );
+  getIt.registerSingleton<BranchRepository>(
+    BranchRepositoryImpl(getIt(), getIt()),
+  );
+  getIt.registerFactory<BranchBloc>(() => BranchBloc(getIt(), getIt()));
+
+  // Admins Feature (super admin only, no offline)
+  getIt.registerSingleton<AdminRemoteDataSource>(
+    AdminRemoteDataSourceImpl(getIt()),
+  );
+  getIt.registerSingleton<AdminRepository>(
+    AdminRepositoryImpl(getIt()),
+  );
+  getIt.registerFactory<AdminBloc>(() => AdminBloc(getIt()));
+
+  // Branch Selection (super admin branch filter state)
+  // Awaited here so the cubit is fully initialized before the first frame,
+  // preventing a ValueKey(null) → ValueKey(id) rebuild cycle at startup.
+  final branchCubit = BranchSelectionCubit(getIt());
+  await branchCubit.init();
+  getIt.registerSingleton<BranchSelectionCubit>(branchCubit);
+
   // Router
-  getIt.registerSingleton<AppRouter>(AppRouter(getIt()));
+  getIt.registerSingleton<AppRouter>(AppRouter(getIt(), getIt()));
 }

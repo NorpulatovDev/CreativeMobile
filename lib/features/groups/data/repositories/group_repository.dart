@@ -1,17 +1,14 @@
 import 'package:dio/dio.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/network/connectivity_service.dart';
-import '../../../../core/offline/sync_queue.dart';
-import '../../../../core/offline/temp_id_generator.dart';
 import '../datasources/group_local_datasource.dart';
 import '../datasources/group_remote_datasource.dart';
 import '../models/group_model.dart';
 
 abstract class GroupRepository {
   Future<(List<GroupModel>?, Failure?)> getAll();
-  Future<(List<GroupModel>?, Failure?)> getAllSortedByTeacher();
+  Future<(List<GroupModel>?, Failure?)> getAllSortedByTeacher({int? year, int? month});
   Future<(List<GroupModel>?, Failure?)> getByTeacherId(int teacherId);
   Future<(GroupModel?, Failure?)> getById(int id);
   Future<(GroupModel?, Failure?)> create(GroupRequest request);
@@ -23,15 +20,11 @@ class GroupRepositoryImpl implements GroupRepository {
   final GroupRemoteDataSource _remoteDataSource;
   final GroupLocalDataSource _localDataSource;
   final ConnectivityService _connectivity;
-  final SyncQueue _syncQueue;
-  final TempIdGenerator _tempIdGenerator;
 
   GroupRepositoryImpl(
     this._remoteDataSource,
     this._localDataSource,
     this._connectivity,
-    this._syncQueue,
-    this._tempIdGenerator,
   );
 
   @override
@@ -57,14 +50,13 @@ class GroupRepositoryImpl implements GroupRepository {
   }
 
   @override
-  Future<(List<GroupModel>?, Failure?)> getAllSortedByTeacher() async {
+  Future<(List<GroupModel>?, Failure?)> getAllSortedByTeacher({int? year, int? month}) async {
     if (_connectivity.isOnline) {
       try {
-        final groups = await _remoteDataSource.getAllSortedByTeacher();
+        final groups = await _remoteDataSource.getAllSortedByTeacher(year: year, month: month);
         await _localDataSource.cacheAll(groups);
         return (groups, null);
       } on DioException catch (e) {
-        // Fallback: return cached groups sorted by teacherName
         final cached = _localDataSource.getAll();
         if (cached.isNotEmpty) {
           cached.sort((a, b) => a.teacherName.compareTo(b.teacherName));
@@ -139,117 +131,58 @@ class GroupRepositoryImpl implements GroupRepository {
 
   @override
   Future<(GroupModel?, Failure?)> create(GroupRequest request) async {
-    if (_connectivity.isOnline) {
-      try {
-        final group = await _remoteDataSource.create(request);
-        await _localDataSource.cacheSingle(group);
-        return (group, null);
-      } on DioException {
-        return _createOffline(request);
-      } catch (e) {
-        return (null, UnknownFailure(e.toString()));
-      }
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('Guruh qo\'shish uchun internet kerak'));
     }
-    return _createOffline(request);
-  }
-
-  Future<(GroupModel?, Failure?)> _createOffline(GroupRequest request) async {
-    final tempId = _tempIdGenerator.next();
-    final now = DateTime.now();
-    final group = GroupModel(
-      id: tempId,
-      name: request.name,
-      teacherId: request.teacherId,
-      teacherName: '', // Unknown offline
-      monthlyFee: request.monthlyFee,
-      studentsCount: 0,
-      totalAmountToPay: 0,
-      totalPaid: 0,
-      createdAt: now,
-      updatedAt: now,
-    );
-    await _localDataSource.cacheSingle(group);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'group',
-      operationType: 'create',
-      entityId: tempId,
-      payload: request.toJson(),
-      createdAt: now,
-    ));
-    return (group, null);
+    try {
+      final group = await _remoteDataSource.create(request);
+      await _localDataSource.cacheSingle(group);
+      return (group, null);
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'Guruh qo\'shishda xatolik yuz berdi';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override
   Future<(GroupModel?, Failure?)> update(int id, GroupRequest request) async {
-    if (_connectivity.isOnline) {
-      try {
-        final group = await _remoteDataSource.update(id, request);
-        await _localDataSource.cacheSingle(group);
-        return (group, null);
-      } on DioException {
-        return _updateOffline(id, request);
-      } catch (e) {
-        return (null, UnknownFailure(e.toString()));
-      }
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('O\'zgartirish uchun internet kerak'));
     }
-    return _updateOffline(id, request);
-  }
-
-  Future<(GroupModel?, Failure?)> _updateOffline(
-      int id, GroupRequest request) async {
-    final existing = _localDataSource.getById(id);
-    final now = DateTime.now();
-    final updated = GroupModel(
-      id: id,
-      name: request.name,
-      teacherId: request.teacherId,
-      teacherName: existing?.teacherName ?? '',
-      monthlyFee: request.monthlyFee,
-      studentsCount: existing?.studentsCount ?? 0,
-      totalAmountToPay: existing?.totalAmountToPay ?? 0,
-      totalPaid: existing?.totalPaid ?? 0,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    );
-    await _localDataSource.cacheSingle(updated);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'group',
-      operationType: 'update',
-      entityId: id,
-      payload: request.toJson(),
-      createdAt: now,
-    ));
-    return (updated, null);
+    try {
+      final group = await _remoteDataSource.update(id, request);
+      await _localDataSource.cacheSingle(group);
+      return (group, null);
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'Guruhni yangilashda xatolik yuz berdi';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override
   Future<Failure?> delete(int id) async {
-    if (_connectivity.isOnline) {
-      try {
-        await _remoteDataSource.delete(id);
-        await _localDataSource.remove(id);
-        return null;
-      } on DioException {
-        return _deleteOffline(id);
-      } catch (e) {
-        return UnknownFailure(e.toString());
-      }
+    if (!_connectivity.isOnline) {
+      return const ServerFailure('O\'chirish uchun internet kerak');
     }
-    return _deleteOffline(id);
-  }
-
-  Future<Failure?> _deleteOffline(int id) async {
-    await _localDataSource.remove(id);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'group',
-      operationType: 'delete',
-      entityId: id,
-      payload: null,
-      createdAt: DateTime.now(),
-    ));
-    return null;
+    try {
+      await _remoteDataSource.delete(id);
+      await _localDataSource.remove(id);
+      return null;
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'Guruhni o\'chirishda xatolik yuz berdi';
+      return ServerFailure(message);
+    } catch (e) {
+      return UnknownFailure(e.toString());
+    }
   }
 }

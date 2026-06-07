@@ -1,13 +1,11 @@
 import 'package:dio/dio.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/network/connectivity_service.dart';
-import '../../../../core/offline/sync_queue.dart';
-import '../../../../core/offline/temp_id_generator.dart';
 import '../datasources/teacher_local_datasource.dart';
 import '../datasources/teacher_remote_datasource.dart';
 import '../models/teacher_model.dart';
+import '../models/teacher_monthly_report_model.dart';
 
 abstract class TeacherRepository {
   Future<(List<TeacherModel>?, Failure?)> getAll();
@@ -15,21 +13,18 @@ abstract class TeacherRepository {
   Future<(TeacherModel?, Failure?)> create(TeacherRequest request);
   Future<(TeacherModel?, Failure?)> update(int id, TeacherRequest request);
   Future<Failure?> delete(int id);
+  Future<(TeacherMonthlyReport?, String?)> getMonthlyReport(int id, int year, int month);
 }
 
 class TeacherRepositoryImpl implements TeacherRepository {
   final TeacherRemoteDataSource _remoteDataSource;
   final TeacherLocalDataSource _localDataSource;
   final ConnectivityService _connectivity;
-  final SyncQueue _syncQueue;
-  final TempIdGenerator _tempIdGenerator;
 
   TeacherRepositoryImpl(
     this._remoteDataSource,
     this._localDataSource,
     this._connectivity,
-    this._syncQueue,
-    this._tempIdGenerator,
   );
 
   @override
@@ -81,114 +76,77 @@ class TeacherRepositoryImpl implements TeacherRepository {
 
   @override
   Future<(TeacherModel?, Failure?)> create(TeacherRequest request) async {
-    if (_connectivity.isOnline) {
-      try {
-        final teacher = await _remoteDataSource.create(request);
-        await _localDataSource.cacheSingle(teacher);
-        return (teacher, null);
-      } on DioException {
-        return _createOffline(request);
-      } catch (e) {
-        return (null, UnknownFailure(e.toString()));
-      }
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('O\'qituvchi qo\'shish uchun internet kerak'));
     }
-    return _createOffline(request);
-  }
-
-  Future<(TeacherModel?, Failure?)> _createOffline(
-      TeacherRequest request) async {
-    final tempId = _tempIdGenerator.next();
-    final now = DateTime.now();
-    final teacher = TeacherModel(
-      id: tempId,
-      fullName: request.fullName,
-      phoneNumber: request.phoneNumber,
-      totalIncome: 0,
-      createdAt: now,
-      updatedAt: now,
-    );
-    await _localDataSource.cacheSingle(teacher);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'teacher',
-      operationType: 'create',
-      entityId: tempId,
-      payload: request.toJson(),
-      createdAt: now,
-    ));
-    return (teacher, null);
+    try {
+      final teacher = await _remoteDataSource.create(request);
+      await _localDataSource.cacheSingle(teacher);
+      return (teacher, null);
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'O\'qituvchi qo\'shishda xatolik yuz berdi';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override
   Future<(TeacherModel?, Failure?)> update(
       int id, TeacherRequest request) async {
-    if (_connectivity.isOnline) {
-      try {
-        final teacher = await _remoteDataSource.update(id, request);
-        await _localDataSource.cacheSingle(teacher);
-        return (teacher, null);
-      } on DioException {
-        return _updateOffline(id, request);
-      } catch (e) {
-        return (null, UnknownFailure(e.toString()));
-      }
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('O\'zgartirish uchun internet kerak'));
     }
-    return _updateOffline(id, request);
-  }
-
-  Future<(TeacherModel?, Failure?)> _updateOffline(
-      int id, TeacherRequest request) async {
-    final existing = _localDataSource.getById(id);
-    final now = DateTime.now();
-    final updated = TeacherModel(
-      id: id,
-      fullName: request.fullName,
-      phoneNumber: request.phoneNumber,
-      totalIncome: existing?.totalIncome ?? 0,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    );
-    await _localDataSource.cacheSingle(updated);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'teacher',
-      operationType: 'update',
-      entityId: id,
-      payload: request.toJson(),
-      createdAt: now,
-    ));
-    return (updated, null);
+    try {
+      final teacher = await _remoteDataSource.update(id, request);
+      await _localDataSource.cacheSingle(teacher);
+      return (teacher, null);
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'O\'qituvchini yangilashda xatolik yuz berdi';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override
   Future<Failure?> delete(int id) async {
-    if (_connectivity.isOnline) {
-      try {
-        await _remoteDataSource.delete(id);
-        await _localDataSource.remove(id);
-        return null;
-      } on DioException catch (e) {
-        if (e.response?.statusCode == 400) {
-          return const ServerFailure('Cannot delete teacher with assigned groups');
-        }
-        return _deleteOffline(id);
-      } catch (e) {
-        return UnknownFailure(e.toString());
-      }
+    if (!_connectivity.isOnline) {
+      return const ServerFailure('O\'chirish uchun internet kerak');
     }
-    return _deleteOffline(id);
+    try {
+      await _remoteDataSource.delete(id);
+      await _localDataSource.remove(id);
+      return null;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 400) {
+        return const ServerFailure('Cannot delete teacher with assigned groups');
+      }
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'O\'qituvchini o\'chirishda xatolik yuz berdi';
+      return ServerFailure(message);
+    } catch (e) {
+      return UnknownFailure(e.toString());
+    }
   }
 
-  Future<Failure?> _deleteOffline(int id) async {
-    await _localDataSource.remove(id);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'teacher',
-      operationType: 'delete',
-      entityId: id,
-      payload: null,
-      createdAt: DateTime.now(),
-    ));
-    return null;
+  @override
+  Future<(TeacherMonthlyReport?, String?)> getMonthlyReport(int id, int year, int month) async {
+    try {
+      final report = await _remoteDataSource.getMonthlyReport(id, year, month);
+      return (report, null);
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'Failed to load monthly report';
+      return (null, message);
+    } catch (e) {
+      return (null, 'An unexpected error occurred: $e');
+    }
   }
 }

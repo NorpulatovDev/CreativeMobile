@@ -1,10 +1,7 @@
 import 'package:dio/dio.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/network/connectivity_service.dart';
-import '../../../../core/offline/sync_queue.dart';
-import '../../../../core/offline/temp_id_generator.dart';
 import '../datasources/attendance_local_datasource.dart';
 import '../datasources/attendance_remote_datasource.dart';
 import '../models/attendance_model.dart';
@@ -24,52 +21,32 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
   final AttendanceRemoteDataSource _remoteDataSource;
   final AttendanceLocalDataSource _localDataSource;
   final ConnectivityService _connectivity;
-  final SyncQueue _syncQueue;
-  final TempIdGenerator _tempIdGenerator;
 
   AttendanceRepositoryImpl(
     this._remoteDataSource,
     this._localDataSource,
     this._connectivity,
-    this._syncQueue,
-    this._tempIdGenerator,
   );
 
   @override
   Future<(List<AttendanceModel>?, Failure?)> createForGroup(
       AttendanceRequest request) async {
-    if (_connectivity.isOnline) {
-      try {
-        final attendances = await _remoteDataSource.createForGroup(request);
-        await _localDataSource.cacheAll(attendances);
-        return (attendances, null);
-      } on DioException catch (e) {
-        final message =
-            e.response?.data?['message'] ?? 'Failed to create attendance';
-        // Queue for later sync
-        await _syncQueue.enqueue(SyncOperation(
-          id: const Uuid().v4(),
-          entityType: 'attendance',
-          operationType: 'create',
-          entityId: _tempIdGenerator.next(),
-          payload: request.toJson(),
-          createdAt: DateTime.now(),
-        ));
-        return (null, ServerFailure(message));
-      } catch (e) {
-        return (null, UnknownFailure(e.toString()));
-      }
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('Davomat belgilash uchun internet kerak'));
     }
-    // Offline: queue the operation
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'attendance',
-      operationType: 'create',
-      entityId: _tempIdGenerator.next(),
-      payload: request.toJson(),
-      createdAt: DateTime.now(),
-    ));
-    return (<AttendanceModel>[], null); // Return empty list, will sync later
+    try {
+      final attendances = await _remoteDataSource.createForGroup(request);
+      await _localDataSource.cacheAll(attendances);
+      return (attendances, null);
+    } on DioException catch (e) {
+      final message =
+          e.response?.data?['message'] as String? ??
+          e.message ??
+          'Davomat belgilashda xatolik yuz berdi';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override
@@ -229,46 +206,21 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
   @override
   Future<(AttendanceModel?, Failure?)> update(
       int id, AttendanceUpdateRequest request) async {
-    if (_connectivity.isOnline) {
-      try {
-        final attendance = await _remoteDataSource.update(id, request);
-        await _localDataSource.cacheSingle(attendance);
-        return (attendance, null);
-      } on DioException {
-        return _updateOffline(id, request);
-      } catch (e) {
-        return (null, UnknownFailure(e.toString()));
-      }
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('Davomatni yangilash uchun internet kerak'));
     }
-    return _updateOffline(id, request);
-  }
-
-  Future<(AttendanceModel?, Failure?)> _updateOffline(
-      int id, AttendanceUpdateRequest request) async {
-    final existing = _localDataSource.getById(id);
-    if (existing != null) {
-      final updated = AttendanceModel(
-        id: id,
-        date: existing.date,
-        studentId: existing.studentId,
-        studentName: existing.studentName,
-        groupId: existing.groupId,
-        groupName: existing.groupName,
-        status: request.status,
-        createdAt: existing.createdAt,
-        updatedAt: DateTime.now(),
-      );
-      await _localDataSource.cacheSingle(updated);
+    try {
+      final attendance = await _remoteDataSource.update(id, request);
+      await _localDataSource.cacheSingle(attendance);
+      return (attendance, null);
+    } on DioException catch (e) {
+      final message =
+          e.response?.data?['message'] as String? ??
+          e.message ??
+          'Davomatni yangilashda xatolik yuz berdi';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
     }
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'attendance',
-      operationType: 'update',
-      entityId: id,
-      payload: request.toJson(),
-      createdAt: DateTime.now(),
-    ));
-    final cached = _localDataSource.getById(id);
-    return (cached, null);
   }
 }

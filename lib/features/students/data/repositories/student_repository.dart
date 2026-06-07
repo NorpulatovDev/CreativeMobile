@@ -1,11 +1,8 @@
 import 'package:dio/dio.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/models/paged_response.dart';
 import '../../../../core/network/connectivity_service.dart';
-import '../../../../core/offline/sync_queue.dart';
-import '../../../../core/offline/temp_id_generator.dart';
 import '../datasources/student_local_datasource.dart';
 import '../datasources/student_remote_datasource.dart';
 import '../models/student_model.dart';
@@ -25,15 +22,11 @@ class StudentRepositoryImpl implements StudentRepository {
   final StudentRemoteDataSource _remoteDataSource;
   final StudentLocalDataSource _localDataSource;
   final ConnectivityService _connectivity;
-  final SyncQueue _syncQueue;
-  final TempIdGenerator _tempIdGenerator;
 
   StudentRepositoryImpl(
     this._remoteDataSource,
     this._localDataSource,
     this._connectivity,
-    this._syncQueue,
-    this._tempIdGenerator,
   );
 
   @override
@@ -125,124 +118,59 @@ class StudentRepositoryImpl implements StudentRepository {
 
   @override
   Future<(StudentModel?, Failure?)> create(StudentRequest request) async {
-    if (_connectivity.isOnline) {
-      try {
-        final student = await _remoteDataSource.create(request);
-        await _localDataSource.cacheSingle(student);
-        return (student, null);
-      } on DioException {
-        return _createOffline(request);
-      } catch (e) {
-        return (null, UnknownFailure(e.toString()));
-      }
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('O\'quvchi qo\'shish uchun internet kerak'));
     }
-    return _createOffline(request);
-  }
-
-  Future<(StudentModel?, Failure?)> _createOffline(
-      StudentRequest request) async {
-    final tempId = _tempIdGenerator.next();
-    final now = DateTime.now();
-    final student = StudentModel(
-      id: tempId,
-      fullName: request.fullName,
-      parentName: request.parentName,
-      parentPhoneNumber: request.parentPhoneNumber,
-      totalPaid: 0,
-      activeGroups: const [],
-      activeGroupsCount: 0,
-      paidForCurrentMonth: false,
-      groupsPaidCount: 0,
-      groupsUnpaidCount: 0,
-      createdAt: now,
-      updatedAt: now,
-    );
-    await _localDataSource.cacheSingle(student);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'student',
-      operationType: 'create',
-      entityId: tempId,
-      payload: request.toJson(),
-      createdAt: now,
-    ));
-    return (student, null);
+    try {
+      final student = await _remoteDataSource.create(request);
+      await _localDataSource.cacheSingle(student);
+      return (student, null);
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'O\'quvchi qo\'shishda xatolik yuz berdi';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override
   Future<(StudentModel?, Failure?)> update(
       int id, StudentRequest request) async {
-    if (_connectivity.isOnline) {
-      try {
-        final student = await _remoteDataSource.update(id, request);
-        await _localDataSource.cacheSingle(student);
-        return (student, null);
-      } on DioException {
-        return _updateOffline(id, request);
-      } catch (e) {
-        return (null, UnknownFailure(e.toString()));
-      }
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('O\'zgartirish uchun internet kerak'));
     }
-    return _updateOffline(id, request);
-  }
-
-  Future<(StudentModel?, Failure?)> _updateOffline(
-      int id, StudentRequest request) async {
-    // Update local cache with what we know
-    final existing = _localDataSource.getById(id);
-    final now = DateTime.now();
-    final updated = StudentModel(
-      id: id,
-      fullName: request.fullName,
-      parentName: request.parentName,
-      parentPhoneNumber: request.parentPhoneNumber,
-      totalPaid: existing?.totalPaid ?? 0,
-      activeGroups: existing?.activeGroups ?? const [],
-      activeGroupsCount: existing?.activeGroupsCount ?? 0,
-      paidForCurrentMonth: existing?.paidForCurrentMonth ?? false,
-      groupsPaidCount: existing?.groupsPaidCount ?? 0,
-      groupsUnpaidCount: existing?.groupsUnpaidCount ?? 0,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    );
-    await _localDataSource.cacheSingle(updated);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'student',
-      operationType: 'update',
-      entityId: id,
-      payload: request.toJson(),
-      createdAt: now,
-    ));
-    return (updated, null);
+    try {
+      final student = await _remoteDataSource.update(id, request);
+      await _localDataSource.cacheSingle(student);
+      return (student, null);
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'O\'quvchini yangilashda xatolik yuz berdi';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override
   Future<Failure?> delete(int id) async {
-    if (_connectivity.isOnline) {
-      try {
-        await _remoteDataSource.delete(id);
-        await _localDataSource.remove(id);
-        return null;
-      } on DioException {
-        return _deleteOffline(id);
-      } catch (e) {
-        return UnknownFailure(e.toString());
-      }
+    if (!_connectivity.isOnline) {
+      return const ServerFailure('O\'chirish uchun internet kerak');
     }
-    return _deleteOffline(id);
-  }
-
-  Future<Failure?> _deleteOffline(int id) async {
-    await _localDataSource.remove(id);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'student',
-      operationType: 'delete',
-      entityId: id,
-      payload: null,
-      createdAt: DateTime.now(),
-    ));
-    return null;
+    try {
+      await _remoteDataSource.delete(id);
+      await _localDataSource.remove(id);
+      return null;
+    } on DioException catch (e) {
+      final message = e.response?.data?['message'] as String? ??
+          e.message ??
+          'O\'quvchini o\'chirishda xatolik yuz berdi';
+      return ServerFailure(message);
+    } catch (e) {
+      return UnknownFailure(e.toString());
+    }
   }
 }

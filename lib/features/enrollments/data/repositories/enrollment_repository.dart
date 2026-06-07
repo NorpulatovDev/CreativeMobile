@@ -1,10 +1,7 @@
 import 'package:dio/dio.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/network/connectivity_service.dart';
-import '../../../../core/offline/sync_queue.dart';
-import '../../../../core/offline/temp_id_generator.dart';
 import '../datasources/enrollment_local_datasource.dart';
 import '../datasources/enrollment_remote_datasource.dart';
 import '../models/enrollment_model.dart';
@@ -14,105 +11,61 @@ abstract class EnrollmentRepository {
   Future<Failure?> removeStudentFromGroup(int studentId, int groupId);
   Future<(List<EnrollmentModel>?, Failure?)> getStudentGroups(int studentId);
   Future<(List<EnrollmentModel>?, Failure?)> getGroupStudents(int groupId);
-  Future<Failure?> transferStudents(List<int> studentIds, int fromGroupId, int toGroupId);
+  Future<Failure?> transferStudents(List<int> studentIds, int fromGroupId, int toGroupId, {bool transferCurrentMonthPayment = false});
 }
 
 class EnrollmentRepositoryImpl implements EnrollmentRepository {
   final EnrollmentRemoteDataSource _remoteDataSource;
   final EnrollmentLocalDataSource _localDataSource;
   final ConnectivityService _connectivity;
-  final SyncQueue _syncQueue;
-  final TempIdGenerator _tempIdGenerator;
 
   EnrollmentRepositoryImpl(
     this._remoteDataSource,
     this._localDataSource,
     this._connectivity,
-    this._syncQueue,
-    this._tempIdGenerator,
   );
 
   @override
   Future<(EnrollmentModel?, Failure?)> addStudentToGroup(
       int studentId, int groupId) async {
-    if (_connectivity.isOnline) {
-      try {
-        final enrollment = await _remoteDataSource.addStudentToGroup(
-          EnrollmentRequest(studentId: studentId, groupId: groupId),
-        );
-        await _localDataSource.cacheSingle(enrollment);
-        return (enrollment, null);
-      } on DioException catch (e) {
-        final message =
-            e.response?.data?['message'] ?? 'Failed to enroll student';
-        // If server explicitly rejects, don't queue offline
-        if (e.response?.statusCode != null &&
-            e.response!.statusCode! >= 400 &&
-            e.response!.statusCode! < 500) {
-          return (null, ServerFailure(message));
-        }
-        return _addOffline(studentId, groupId);
-      } catch (e) {
-        return (null, UnknownFailure(e.toString()));
-      }
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('Guruhga qo\'shish uchun internet kerak'));
     }
-    return _addOffline(studentId, groupId);
-  }
-
-  Future<(EnrollmentModel?, Failure?)> _addOffline(
-      int studentId, int groupId) async {
-    final tempId = _tempIdGenerator.next();
-    final now = DateTime.now();
-    final enrollment = EnrollmentModel(
-      id: tempId,
-      studentId: studentId,
-      studentName: '',
-      groupId: groupId,
-      groupName: '',
-      teacherName: '',
-      monthlyFee: 0,
-      active: true,
-      enrolledAt: now,
-    );
-    await _localDataSource.cacheSingle(enrollment);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'enrollment',
-      operationType: 'create',
-      entityId: tempId,
-      payload: {'studentId': studentId, 'groupId': groupId},
-      createdAt: now,
-    ));
-    return (enrollment, null);
+    try {
+      final enrollment = await _remoteDataSource.addStudentToGroup(
+        EnrollmentRequest(studentId: studentId, groupId: groupId),
+      );
+      await _localDataSource.cacheSingle(enrollment);
+      return (enrollment, null);
+    } on DioException catch (e) {
+      final message =
+          e.response?.data?['message'] as String? ??
+          e.message ??
+          'Guruhga qo\'shishda xatolik yuz berdi';
+      return (null, ServerFailure(message));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override
   Future<Failure?> removeStudentFromGroup(int studentId, int groupId) async {
-    if (_connectivity.isOnline) {
-      try {
-        await _remoteDataSource.removeStudentFromGroup(studentId, groupId);
-        await _localDataSource.removeByStudentAndGroup(studentId, groupId);
-        return null;
-      } on DioException {
-        return _removeOffline(studentId, groupId);
-      } catch (e) {
-        return UnknownFailure(e.toString());
-      }
+    if (!_connectivity.isOnline) {
+      return const ServerFailure('Guruhdan chiqarish uchun internet kerak');
     }
-    return _removeOffline(studentId, groupId);
-  }
-
-  Future<Failure?> _removeOffline(int studentId, int groupId) async {
-    await _localDataSource.removeByStudentAndGroup(studentId, groupId);
-    await _syncQueue.enqueue(SyncOperation(
-      id: const Uuid().v4(),
-      entityType: 'enrollment',
-      operationType: 'delete',
-      entityId: 0, // Not applicable for this composite key
-      payload: {'studentId': studentId, 'groupId': groupId},
-      createdAt: DateTime.now(),
-    ));
-    return null;
+    try {
+      await _remoteDataSource.removeStudentFromGroup(studentId, groupId);
+      await _localDataSource.removeByStudentAndGroup(studentId, groupId);
+      return null;
+    } on DioException catch (e) {
+      final message =
+          e.response?.data?['message'] as String? ??
+          e.message ??
+          'Guruhdan chiqarishda xatolik yuz berdi';
+      return ServerFailure(message);
+    } catch (e) {
+      return UnknownFailure(e.toString());
+    }
   }
 
   @override
@@ -146,10 +99,10 @@ class EnrollmentRepositoryImpl implements EnrollmentRepository {
 
   @override
   Future<Failure?> transferStudents(
-      List<int> studentIds, int fromGroupId, int toGroupId) async {
+      List<int> studentIds, int fromGroupId, int toGroupId,
+      {bool transferCurrentMonthPayment = false}) async {
     if (!_connectivity.isOnline) {
-      return const ServerFailure(
-          'O\'tkazish uchun internet aloqasi kerak');
+      return const ServerFailure('O\'tkazish uchun internet aloqasi kerak');
     }
     try {
       await _remoteDataSource.transferStudents(
@@ -157,6 +110,7 @@ class EnrollmentRepositoryImpl implements EnrollmentRepository {
           studentIds: studentIds,
           fromGroupId: fromGroupId,
           toGroupId: toGroupId,
+          transferCurrentMonthPayment: transferCurrentMonthPayment,
         ),
       );
       for (final studentId in studentIds) {
@@ -165,7 +119,9 @@ class EnrollmentRepositoryImpl implements EnrollmentRepository {
       return null;
     } on DioException catch (e) {
       final message =
-          e.response?.data?['message'] ?? 'O\'tkazishda xatolik yuz berdi';
+          e.response?.data?['message'] as String? ??
+          e.message ??
+          'O\'tkazishda xatolik yuz berdi';
       return ServerFailure(message);
     } catch (e) {
       return UnknownFailure(e.toString());
