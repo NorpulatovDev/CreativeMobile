@@ -97,10 +97,19 @@ class _GroupStudentsTabState extends State<GroupStudentsTab> {
           color: AppColors.success,
           child: CustomScrollView(
             slivers: [
-              // ── Search bar ──────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              // ── Pinned search bar ────────────────────────────────────
+              SliverAppBar(
+                pinned: true,
+                floating: false,
+                snap: false,
+                automaticallyImplyLeading: false,
+                backgroundColor: AppColors.backgroundLight,
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                toolbarHeight: 60,
+                titleSpacing: 0,
+                title: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
                   child: TextField(
                     controller: _searchController,
                     onChanged: (v) => setState(() => _query = v),
@@ -138,20 +147,23 @@ class _GroupStudentsTabState extends State<GroupStudentsTab> {
                     ),
                   ),
                 ),
+                bottom: _query.isNotEmpty
+                    ? PreferredSize(
+                        preferredSize: const Size.fromHeight(20),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '${students.length} ta o\'quvchi topildi',
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppColors.neutral400),
+                            ),
+                          ),
+                        ),
+                      )
+                    : null,
               ),
-
-              // ── Results count hint when filtering ───────────────────
-              if (_query.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
-                    child: Text(
-                      '${students.length} ta o\'quvchi topildi',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.neutral400),
-                    ),
-                  ),
-                ),
 
               // ── Empty search result ──────────────────────────────────
               if (students.isEmpty)
