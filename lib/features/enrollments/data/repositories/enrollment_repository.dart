@@ -11,7 +11,7 @@ abstract class EnrollmentRepository {
   Future<Failure?> removeStudentFromGroup(int studentId, int groupId);
   Future<(List<EnrollmentModel>?, Failure?)> getStudentGroups(int studentId);
   Future<(List<EnrollmentModel>?, Failure?)> getGroupStudents(int groupId);
-  Future<Failure?> transferStudents(List<int> studentIds, int fromGroupId, int toGroupId, {bool transferCurrentMonthPayment = false});
+  Future<Failure?> transferStudents(List<int> studentIds, int fromGroupId, int toGroupId, {bool transferAllPayments = false});
 }
 
 class EnrollmentRepositoryImpl implements EnrollmentRepository {
@@ -100,7 +100,7 @@ class EnrollmentRepositoryImpl implements EnrollmentRepository {
   @override
   Future<Failure?> transferStudents(
       List<int> studentIds, int fromGroupId, int toGroupId,
-      {bool transferCurrentMonthPayment = false}) async {
+      {bool transferAllPayments = false}) async {
     if (!_connectivity.isOnline) {
       return const ServerFailure('O\'tkazish uchun internet aloqasi kerak');
     }
@@ -110,7 +110,7 @@ class EnrollmentRepositoryImpl implements EnrollmentRepository {
           studentIds: studentIds,
           fromGroupId: fromGroupId,
           toGroupId: toGroupId,
-          transferCurrentMonthPayment: transferCurrentMonthPayment,
+          transferAllPayments: transferAllPayments,
         ),
       );
       for (final studentId in studentIds) {

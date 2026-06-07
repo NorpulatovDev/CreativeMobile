@@ -79,6 +79,7 @@ class TransferStudentCubit extends Cubit<TransferStudentState> {
   Future<void> transfer({
     required List<int> studentIds,
     required int toGroupId,
+    bool transferAllPayments = false,
   }) async {
     final currentGroups = state is TransferGroupsLoaded
         ? (state as TransferGroupsLoaded).groups
@@ -92,6 +93,7 @@ class TransferStudentCubit extends Cubit<TransferStudentState> {
       studentIds,
       currentGroupId,
       toGroupId,
+      transferAllPayments: transferAllPayments,
     );
     if (isClosed) return;
     if (failure != null) {

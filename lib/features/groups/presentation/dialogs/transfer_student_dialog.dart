@@ -25,6 +25,7 @@ class _TransferStudentDialogState extends State<TransferStudentDialog> {
   final _searchController = TextEditingController();
   GroupModel? _selectedGroup;
   String _query = '';
+  bool _transferPayment = true;
 
   @override
   void initState() {
@@ -73,6 +74,7 @@ class _TransferStudentDialogState extends State<TransferStudentDialog> {
               _buildHeader(),
               _buildSearch(),
               Flexible(child: _buildGroupList()),
+              _buildPaymentCheckbox(),
               _buildConfirmButton(),
               const SizedBox(height: 16),
             ],
@@ -265,6 +267,65 @@ class _TransferStudentDialogState extends State<TransferStudentDialog> {
     );
   }
 
+  Widget _buildPaymentCheckbox() {
+    return InkWell(
+      onTap: () => setState(() => _transferPayment = !_transferPayment),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: _transferPayment
+                ? AppColors.primary.withValues(alpha: 0.06)
+                : AppColors.neutral50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _transferPayment
+                  ? AppColors.primary.withValues(alpha: 0.25)
+                  : AppColors.neutral200,
+            ),
+          ),
+          child: Row(
+            children: [
+              Checkbox(
+                value: _transferPayment,
+                onChanged: (v) =>
+                    setState(() => _transferPayment = v ?? true),
+                activeColor: AppColors.primary,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Barcha to\'lovlarni ko\'chirish',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _transferPayment
+                            ? AppColors.primary
+                            : AppColors.neutral600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Ushbu guruhda qilingan barcha to\'lovlar yangi guruhga o\'tkaziladi',
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.neutral400),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildConfirmButton() {
     return BlocBuilder<TransferStudentCubit, TransferStudentState>(
       builder: (context, state) {
@@ -277,6 +338,7 @@ class _TransferStudentDialogState extends State<TransferStudentDialog> {
                 : () => context.read<TransferStudentCubit>().transfer(
                       studentIds: widget.studentIds,
                       toGroupId: _selectedGroup!.id,
+                      transferAllPayments: _transferPayment,
                     ),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.primary,

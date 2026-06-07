@@ -54,16 +54,19 @@ class TransferRequest {
   final List<int> studentIds;
   final int fromGroupId;
   final int toGroupId;
+  final bool transferAllPayments;
 
   const TransferRequest({
     required this.studentIds,
     required this.fromGroupId,
     required this.toGroupId,
+    this.transferAllPayments = false,
   });
 
   Map<String, dynamic> toJson() => {
         'studentIds': studentIds,
         'fromGroupId': fromGroupId,
         'toGroupId': toGroupId,
+        'transferAllPayments': transferAllPayments,
       };
 }
