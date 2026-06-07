@@ -8,7 +8,7 @@ import '../../../../students/data/models/student_model.dart';
 import '../../bloc/group_students_cubit.dart';
 import '../../widgets/student_card.dart';
 
-class GroupStudentsTab extends StatelessWidget {
+class GroupStudentsTab extends StatefulWidget {
   final int groupId;
   final ValueChanged<StudentModel> onRemoveStudent;
   final bool isTransferMode;
@@ -25,6 +25,28 @@ class GroupStudentsTab extends StatelessWidget {
   });
 
   @override
+  State<GroupStudentsTab> createState() => _GroupStudentsTabState();
+}
+
+class _GroupStudentsTabState extends State<GroupStudentsTab> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<StudentModel> _filtered(List<StudentModel> students) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return students;
+    return students
+        .where((s) => s.fullName.toLowerCase().contains(q))
+        .toList();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return BlocBuilder<GroupStudentsCubit, GroupStudentsState>(
       buildWhen: (prev, curr) =>
@@ -36,7 +58,10 @@ class GroupStudentsTab extends StatelessWidget {
           );
         }
 
-        if (state is GroupStudentsLoaded && state.students.isEmpty) {
+        final allStudents =
+            state is GroupStudentsLoaded ? state.students : <StudentModel>[];
+
+        if (allStudents.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -65,43 +90,128 @@ class GroupStudentsTab extends StatelessWidget {
           );
         }
 
-        final students =
-            state is GroupStudentsLoaded ? state.students : <StudentModel>[];
+        final students = _filtered(allStudents);
 
         return RefreshIndicator(
           onRefresh: context.read<GroupStudentsCubit>().reload,
           color: AppColors.success,
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-            itemCount: students.length,
-            itemBuilder: (context, index) {
-              final student = students[index];
-              GroupInfo? groupInfo;
-              try {
-                groupInfo = student.activeGroups.firstWhere(
-                  (g) => g.groupId == groupId,
-                );
-              } catch (_) {
-                if (student.activeGroups.isNotEmpty) {
-                  groupInfo = student.activeGroups.first;
-                }
-              }
-              if (groupInfo == null) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: StudentCard(
-                  student: student,
-                  groupInfo: groupInfo,
-                  isSelectionMode: isTransferMode,
-                  isSelected: selectedStudentIds.contains(student.id),
-                  onTap: isTransferMode
-                      ? () => onToggleSelection(student.id)
-                      : () => context.push('${Routes.students}/${student.id}'),
-                  onLongPress:
-                      isTransferMode ? null : () => onRemoveStudent(student),
+          child: CustomScrollView(
+            slivers: [
+              // ── Search bar ──────────────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (v) => setState(() => _query = v),
+                    style: const TextStyle(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'O\'quvchi qidirish...',
+                      hintStyle: const TextStyle(
+                          fontSize: 14, color: AppColors.neutral400),
+                      prefixIcon: const Icon(Icons.search_rounded,
+                          color: AppColors.neutral400, size: 20),
+                      suffixIcon: _query.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.close_rounded,
+                                  size: 18, color: AppColors.neutral400),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _query = '');
+                              },
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: AppColors.neutral100,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(
+                            color: AppColors.success.withValues(alpha: 0.5),
+                            width: 1.5),
+                      ),
+                    ),
+                  ),
                 ),
-              );
-            },
+              ),
+
+              // ── Results count hint when filtering ───────────────────
+              if (_query.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
+                    child: Text(
+                      '${students.length} ta o\'quvchi topildi',
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.neutral400),
+                    ),
+                  ),
+                ),
+
+              // ── Empty search result ──────────────────────────────────
+              if (students.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off_rounded,
+                            size: 48, color: AppColors.neutral300),
+                        const SizedBox(height: 12),
+                        Text(
+                          '"$_query" bo\'yicha o\'quvchi topilmadi',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: AppColors.neutral400, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                // ── Student list ───────────────────────────────────────
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+                  sliver: SliverList.separated(
+                    itemCount: students.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final student = students[index];
+                      GroupInfo? groupInfo;
+                      try {
+                        groupInfo = student.activeGroups.firstWhere(
+                          (g) => g.groupId == widget.groupId,
+                        );
+                      } catch (_) {
+                        if (student.activeGroups.isNotEmpty) {
+                          groupInfo = student.activeGroups.first;
+                        }
+                      }
+                      if (groupInfo == null) return const SizedBox.shrink();
+                      return StudentCard(
+                        student: student,
+                        groupInfo: groupInfo,
+                        isSelectionMode: widget.isTransferMode,
+                        isSelected:
+                            widget.selectedStudentIds.contains(student.id),
+                        onTap: widget.isTransferMode
+                            ? () => widget.onToggleSelection(student.id)
+                            : () => context
+                                .push('${Routes.students}/${student.id}'),
+                        onLongPress: widget.isTransferMode
+                            ? null
+                            : () => widget.onRemoveStudent(student),
+                      );
+                    },
+                  ),
+                ),
+            ],
           ),
         );
       },
