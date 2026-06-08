@@ -1,14 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/branch/branch_selection_cubit.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/router/routes.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/phone_formatter.dart';
+import '../../../../core/utils/uzbek_phone_formatter.dart';
 import '../../../groups/data/datasources/group_local_datasource.dart';
 import '../../../groups/data/models/group_model.dart';
 import '../../../groups/data/repositories/group_repository.dart';
@@ -20,9 +21,13 @@ class StudentsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => getIt<StudentBloc>()..add(const StudentSearch('')),
-      child: const StudentsView(),
+    final branchId = context.watch<BranchSelectionCubit>().state.selectedBranchId;
+    return KeyedSubtree(
+      key: ValueKey(branchId),
+      child: BlocProvider(
+        create: (_) => getIt<StudentBloc>()..add(const StudentSearch('')),
+        child: const StudentsView(),
+      ),
     );
   }
 }
@@ -192,6 +197,8 @@ class _StudentsViewState extends State<StudentsView> {
             ),
           ),
           BlocConsumer<StudentBloc, StudentState>(
+            listenWhen: (_, curr) => curr is StudentError || curr is StudentActionSuccess,
+            buildWhen: (_, curr) => curr is! StudentActionSuccess,
             listener: (context, state) {
               if (state is StudentError) {
                 _showSnackBar(
@@ -1078,74 +1085,6 @@ class _StudentFormDialogState extends State<StudentFormDialog> {
   }
 }
 
-class UzbekPhoneNumberFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    // 1. Extract only digits from the input
-    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
-
-    // 2. If the text is empty or just "998", reset to base prefix
-    if (digits.isEmpty) {
-      return const TextEditingValue(
-        text: '+998 ',
-        selection: TextSelection.collapsed(offset: 5),
-      );
-    }
-
-    // 3. Handle the prefix logic
-    // We strictly assume the number must start with 998.
-    // If the user deleted the prefix, we add it back.
-    // If the user typed digits, we ensure 998 is not duplicated.
-    String body = digits;
-    if (body.startsWith('998')) {
-      body = body.substring(3);
-    }
-
-    // Limit to 9 digits (standard Uzbek mobile number length)
-    if (body.length > 9) {
-      body = body.substring(0, 9);
-    }
-
-    // 4. Build the formatted string
-    final buffer = StringBuffer();
-    buffer.write('+998 ');
-
-    if (body.isNotEmpty) {
-      // Area code (2 digits) e.g., 90
-      buffer.write(body.substring(0, body.length >= 2 ? 2 : body.length));
-      if (body.length > 2) buffer.write(' ');
-    }
-
-    if (body.length > 2) {
-      // Next 3 digits e.g., 123
-      buffer.write(body.substring(2, body.length >= 5 ? 5 : body.length));
-      if (body.length > 5) buffer.write(' ');
-    }
-
-    if (body.length > 5) {
-      // Next 2 digits e.g., 45
-      buffer.write(body.substring(5, body.length >= 7 ? 7 : body.length));
-      if (body.length > 7) buffer.write(' ');
-    }
-
-    if (body.length > 7) {
-      // Last 2 digits e.g., 67
-      buffer.write(body.substring(7));
-    }
-
-    final formattedText = buffer.toString();
-
-    // 5. Return the new value with the cursor at the end
-    // (Simple implementation; for advanced cursor handling, more logic is needed)
-    return TextEditingValue(
-      text: formattedText,
-      selection: TextSelection.collapsed(offset: formattedText.length),
-    );
-  }
-}
 
 class _GroupPickerSheet extends StatefulWidget {
   final List<GroupModel> groups;

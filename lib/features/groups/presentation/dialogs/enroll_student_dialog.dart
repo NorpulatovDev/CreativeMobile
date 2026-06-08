@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/uzbek_phone_formatter.dart';
 import '../../../students/data/models/student_model.dart';
 import '../bloc/enroll_student_cubit.dart';
 
@@ -288,7 +289,7 @@ class _NewStudentFormState extends State<_NewStudentForm> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   final _parentNameController = TextEditingController();
-  final _phoneController = TextEditingController();
+  final _phoneController = TextEditingController(text: '+998 ');
 
   @override
   void initState() {
@@ -312,7 +313,7 @@ class _NewStudentFormState extends State<_NewStudentForm> {
             parentName: _parentNameController.text.trim().isEmpty
                 ? 'Unknown'
                 : _parentNameController.text.trim(),
-            parentPhoneNumber: _phoneController.text.trim(),
+            parentPhoneNumber: _phoneController.text.replaceAll(' ', ''),
           ),
         );
   }
@@ -359,15 +360,41 @@ class _NewStudentFormState extends State<_NewStudentForm> {
                     validator: (_) => null,
                   ),
                   const SizedBox(height: 14),
-                  _FormField(
-                    controller: _phoneController,
-                    label: 'Telefon raqami',
-                    hint: '+998 90 123 45 67',
-                    icon: Icons.phone_outlined,
-                    keyboardType: TextInputType.phone,
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Telefon raqamini kiriting'
-                        : null,
+                  // ── Phone field with Uzbek formatter ──────────────────
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Telefon raqami',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.neutral700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: [UzbekPhoneNumberFormatter()],
+                        validator: (v) => (v == null || v.length < 17)
+                            ? 'Telefon raqamini to\'liq kiriting'
+                            : null,
+                        decoration: const InputDecoration(
+                          hintText: '+998 XX XXX XX XX',
+                          prefixIcon: Icon(
+                            Icons.phone_outlined,
+                            size: 20,
+                            color: AppColors.neutral400,
+                          ),
+                          helperText: 'Format: +998 97 123 45 67',
+                          helperStyle: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.neutral400,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 24),
                   BlocBuilder<EnrollStudentCubit, EnrollStudentState>(
@@ -478,7 +505,6 @@ class _FormField extends StatelessWidget {
   final String label;
   final String hint;
   final IconData icon;
-  final TextInputType keyboardType;
   final String? Function(String?) validator;
 
   const _FormField({
@@ -487,7 +513,6 @@ class _FormField extends StatelessWidget {
     required this.hint,
     required this.icon,
     required this.validator,
-    this.keyboardType = TextInputType.text,
   });
 
   @override
@@ -503,7 +528,6 @@ class _FormField extends StatelessWidget {
         const SizedBox(height: 6),
         TextFormField(
           controller: controller,
-          keyboardType: keyboardType,
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: Icon(icon, size: 20, color: AppColors.neutral400),
