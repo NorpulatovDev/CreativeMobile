@@ -6,7 +6,9 @@ import 'package:go_router/go_router.dart';
 
 import '../services/sms_service.dart';
 
+import 'package:creative/features/inquiries/data/models/inquiry_group_model.dart';
 import 'package:creative/features/inquiries/presentation/pages/inquiries_page.dart';
+import 'package:creative/features/inquiries/presentation/pages/inquiry_group_detail_page.dart';
 
 import '../../features/admins/presentation/pages/admins_page.dart';
 import '../../features/attendance/presentation/pages/attendance_page.dart';
@@ -14,6 +16,7 @@ import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/branches/data/models/branch_model.dart';
 import '../../features/branches/data/repositories/branch_repository.dart';
+import '../../features/branches/presentation/bloc/branch_bloc.dart';
 import '../../features/branches/presentation/pages/branches_page.dart';
 import '../../features/groups/presentation/pages/group_detail_page.dart';
 import '../../features/groups/presentation/pages/groups_page.dart';
@@ -41,7 +44,7 @@ class AppRouter {
   late final GoRouter router = GoRouter(
     initialLocation: Routes.splash,
     debugLogDiagnostics: true,
-    refreshListenable: GoRouterRefreshStream([_authBloc.stream, _branchCubit.stream]),
+    refreshListenable: GoRouterRefreshStream([_authBloc.stream, _branchCubit.onBranchSwitch]),
     redirect: _redirect,
     routes: [
       GoRoute(
@@ -90,6 +93,16 @@ class AppRouter {
                 path: Routes.inquiries,
                 name: 'inquiries',
                 builder: (context, state) => const InquiriesPage(),
+                routes: [
+                  GoRoute(
+                    path: 'groups/:id',
+                    name: 'inquiry-group-detail',
+                    builder: (context, state) {
+                      final group = state.extra as InquiryGroupModel;
+                      return InquiryGroupDetailPage(group: group);
+                    },
+                  ),
+                ],
               ),
               GoRoute(
                 path: Routes.attendance,
@@ -366,9 +379,14 @@ class _MainScaffoldState extends State<MainScaffold> {
       builder: (context, authState) {
         final isSuperAdmin =
             authState is AuthAuthenticated && authState.user.isSuperAdmin;
+        final isHomeTab = widget.navigationShell.currentIndex == 0;
         return Scaffold(
             key: MainScaffold.scaffoldKey,
             drawer: isSuperAdmin ? const _BranchDrawer() : null,
+            drawerEnableOpenDragGesture: isSuperAdmin,
+            drawerEdgeDragWidth: isSuperAdmin && isHomeTab
+                ? MediaQuery.sizeOf(context).width
+                : 20,
             body: widget.navigationShell,
             bottomNavigationBar: Container(
               decoration: BoxDecoration(
@@ -444,34 +462,36 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primaryContainer : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isSelected ? selectedIcon : icon,
-              color: isSelected ? AppColors.primary : AppColors.neutral400,
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                color: isSelected ? AppColors.primary : AppColors.neutral500,
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.primaryContainer : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSelected ? selectedIcon : icon,
+                color: isSelected ? AppColors.primary : AppColors.neutral400,
+                size: 24,
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  color: isSelected ? AppColors.primary : AppColors.neutral500,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -507,11 +527,6 @@ class _HomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authState = context.watch<AuthBloc>().state;
-    final isSuperAdmin =
-        authState is AuthAuthenticated && authState.user.isSuperAdmin;
-    final branchState = context.watch<BranchSelectionCubit>().state;
-
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -520,68 +535,15 @@ class _HomeHeader extends StatelessWidget {
           colors: [AppColors.gradientStart, AppColors.gradientEnd],
         ),
       ),
-      child: SafeArea(
+      child: const SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           child: Row(
             children: [
-              GestureDetector(
-                onTap: isSuperAdmin
-                    ? () => MainScaffold.scaffoldKey.currentState?.openDrawer()
-                    : null,
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    isSuperAdmin ? Icons.menu_rounded : Icons.school_rounded,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Creative',
-                      style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: -0.3),
-                    ),
-                    Text(
-                      isSuperAdmin && branchState.selectedBranchName != null
-                          ? branchState.selectedBranchName!
-                          : "O'quv Markazi",
-                      style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w400),
-                    ),
-                  ],
-                ),
-              ),
-              GestureDetector(
-                onTap: () => getIt<AuthBloc>().add(AuthLogout()),
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.logout_rounded,
-                      color: Colors.white, size: 20),
-                ),
-              ),
+              _HeaderMenuButton(),
+              SizedBox(width: 14),
+              Expanded(child: _HeaderTitle()),
             ],
           ),
         ),
@@ -589,6 +551,73 @@ class _HomeHeader extends StatelessWidget {
     );
   }
 }
+
+// Watches AuthBloc only — rebuilds when super-admin status changes.
+class _HeaderMenuButton extends StatelessWidget {
+  const _HeaderMenuButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = context.watch<AuthBloc>().state;
+    final isSuperAdmin =
+        authState is AuthAuthenticated && authState.user.isSuperAdmin;
+    return GestureDetector(
+      onTap: isSuperAdmin
+          ? () => MainScaffold.scaffoldKey.currentState?.openDrawer()
+          : null,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(
+          isSuperAdmin ? Icons.menu_rounded : Icons.school_rounded,
+          color: Colors.white,
+          size: 24,
+        ),
+      ),
+    );
+  }
+}
+
+// Watches both AuthBloc and BranchSelectionCubit — only the subtitle text
+// and title column rebuild; the surrounding gradient container does not.
+class _HeaderTitle extends StatelessWidget {
+  const _HeaderTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = context.watch<AuthBloc>().state;
+    final isSuperAdmin =
+        authState is AuthAuthenticated && authState.user.isSuperAdmin;
+    final branchName =
+        context.watch<BranchSelectionCubit>().state.selectedBranchName;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Creative',
+          style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: -0.3),
+        ),
+        Text(
+          isSuperAdmin && branchName != null ? branchName : "O'quv Markazi",
+          style: const TextStyle(
+              fontSize: 12,
+              color: Colors.white70,
+              fontWeight: FontWeight.w400),
+        ),
+      ],
+    );
+  }
+}
+
 
 class _BranchDrawer extends StatefulWidget {
   const _BranchDrawer();
@@ -598,119 +627,188 @@ class _BranchDrawer extends StatefulWidget {
 }
 
 class _BranchDrawerState extends State<_BranchDrawer> {
-  late Future<List<BranchModel>> _branchesFuture;
+  late final BranchBloc _branchBloc;
 
   @override
   void initState() {
     super.initState();
-    _branchesFuture =
-        getIt<BranchRepository>().getAll().then((r) => r.$1 ?? []);
+    _branchBloc = getIt<BranchBloc>()..add(BranchLoadAll());
+  }
+
+  @override
+  void dispose() {
+    _branchBloc.close();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Drawer(
-      backgroundColor: AppColors.backgroundLight,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _DrawerHeader(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-            child: Row(
-              children: [
-                const Icon(Icons.apartment_rounded,
-                    size: 13, color: AppColors.neutral400),
-                const SizedBox(width: 6),
-                Text(
-                  'FILIALLAR',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.neutral400,
-                    letterSpacing: 1.4,
+    return BlocProvider.value(
+      value: _branchBloc,
+      child: Drawer(
+        backgroundColor: AppColors.backgroundLight,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _DrawerHeader(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.apartment_rounded,
+                      size: 13, color: AppColors.neutral400),
+                  const SizedBox(width: 6),
+                  Text(
+                    'FILIALLAR',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.neutral400,
+                      letterSpacing: 1.4,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Expanded(
-            child: FutureBuilder<List<BranchModel>>(
-              future: _branchesFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  );
-                }
-                final branches = snapshot.data ?? [];
-                return BlocBuilder<BranchSelectionCubit, BranchSelectionState>(
-                  builder: (context, state) {
-                    return ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 4),
-                      itemCount: branches.length,
-                      itemBuilder: (context, index) {
-                        final branch = branches[index];
-                        final isSelected =
-                            state.selectedBranchId == branch.id;
-                        return _BranchCard(
-                          branch: branch,
-                          isSelected: isSelected,
-                          onTap: () {
-                            context
-                                .read<BranchSelectionCubit>()
-                                .selectBranch(
-                                  branchId: branch.id,
-                                  branchName: branch.name,
-                                );
-                            Navigator.of(context).pop();
-                          },
-                        );
-                      },
+            Expanded(
+              child: BlocBuilder<BranchBloc, BranchState>(
+                builder: (context, branchState) {
+                  if (branchState is BranchLoading) {
+                    return const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     );
-                  },
-                );
-              },
+                  }
+                  if (branchState is BranchError) {
+                    return Center(child: Text(branchState.message));
+                  }
+                  final branches =
+                      branchState is BranchLoaded ? branchState.branches : <BranchModel>[];
+                  return BlocBuilder<BranchSelectionCubit, BranchSelectionState>(
+                    builder: (context, selectionState) {
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 4),
+                        itemCount: branches.length,
+                        itemBuilder: (context, index) {
+                          final branch = branches[index];
+                          final isSelected =
+                              selectionState.selectedBranchId == branch.id;
+                          return _BranchCard(
+                            branch: branch,
+                            isSelected: isSelected,
+                            onTap: () {
+                              context
+                                  .read<BranchSelectionCubit>()
+                                  .selectBranch(
+                                    branchId: branch.id,
+                                    branchName: branch.name,
+                                  );
+                              Navigator.of(context).pop();
+                            },
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-            child: GestureDetector(
+            const Divider(height: 1, indent: 20, endIndent: 20),
+            const SizedBox(height: 8),
+            _DrawerNavItem(
+              icon: Icons.business_rounded,
+              label: 'Filiallar',
+              color: const Color(0xFF0EA5E9),
               onTap: () {
                 Navigator.of(context).pop();
-                getIt<AuthBloc>().add(AuthLogout());
+                context.push(Routes.branches);
               },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.07),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                      color: Colors.red.withValues(alpha: 0.15), width: 1.5),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.logout_rounded, color: Colors.red, size: 18),
-                    SizedBox(width: 8),
-                    Text(
-                      'Chiqish',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.red,
+            ),
+            _DrawerNavItem(
+              icon: Icons.admin_panel_settings_rounded,
+              label: 'Adminlar',
+              color: const Color(0xFFEC4899),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push(Routes.admins);
+              },
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              child: GestureDetector(
+                onTap: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
                       ),
+                      title: const Text(
+                        'Chiqish',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      content: const Text(
+                        'Tizimdan chiqmoqchimisiz?',
+                        style: TextStyle(color: AppColors.neutral600),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(false),
+                          child: const Text(
+                            'Bekor qilish',
+                            style: TextStyle(color: AppColors.neutral500),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(true),
+                          child: const Text(
+                            'Chiqish',
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  );
+                  if (confirmed == true) {
+                    if (context.mounted) Navigator.of(context).pop();
+                    getIt<AuthBloc>().add(AuthLogout());
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                        color: Colors.red.withValues(alpha: 0.15), width: 1.5),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.logout_rounded, color: Colors.red, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Chiqish',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -729,95 +827,142 @@ class _BranchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              gradient: isSelected
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                    )
+                  : null,
+              color: isSelected ? null : AppColors.surfaceLight,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: isSelected
+                      ? AppColors.primary.withValues(alpha: 0.28)
+                      : Colors.black.withValues(alpha: 0.05),
+                  blurRadius: isSelected ? 18 : 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white.withValues(alpha: 0.2)
+                        : AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    Icons.business_rounded,
+                    color: isSelected ? Colors.white : AppColors.primary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        branch.name,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: isSelected ? Colors.white : AppColors.neutral800,
+                        ),
+                      ),
+                      if (branch.address != null &&
+                          branch.address!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          branch.address!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isSelected
+                                ? Colors.white.withValues(alpha: 0.72)
+                                : AppColors.neutral500,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: isSelected
+                      ? Container(
+                          key: const ValueKey('check'),
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.check_rounded,
+                              color: Colors.white, size: 16),
+                        )
+                      : const SizedBox(key: ValueKey('empty'), width: 28),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawerNavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _DrawerNavItem({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
       child: GestureDetector(
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeInOut,
-          padding: const EdgeInsets.all(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
           decoration: BoxDecoration(
-            gradient: isSelected
-                ? const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppColors.gradientStart, AppColors.gradientEnd],
-                  )
-                : null,
-            color: isSelected ? null : AppColors.surfaceLight,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: isSelected
-                    ? AppColors.primary.withValues(alpha: 0.28)
-                    : Colors.black.withValues(alpha: 0.05),
-                blurRadius: isSelected ? 18 : 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? Colors.white.withValues(alpha: 0.2)
-                      : AppColors.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  Icons.business_rounded,
-                  color: isSelected ? Colors.white : AppColors.primary,
-                  size: 22,
-                ),
-              ),
+              Icon(icon, color: color, size: 20),
               const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      branch.name,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: isSelected ? Colors.white : AppColors.neutral800,
-                      ),
-                    ),
-                    if (branch.address != null &&
-                        branch.address!.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        branch.address!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isSelected
-                              ? Colors.white.withValues(alpha: 0.72)
-                              : AppColors.neutral500,
-                        ),
-                      ),
-                    ],
-                  ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: color,
                 ),
-              ),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: isSelected
-                    ? Container(
-                        key: const ValueKey('check'),
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.check_rounded,
-                            color: Colors.white, size: 16),
-                      )
-                    : const SizedBox(key: ValueKey('empty'), width: 28),
               ),
             ],
           ),
@@ -1083,9 +1228,6 @@ class _PageGrid extends StatelessWidget {
   }
 
   List<_PageData> _buildItems(BuildContext context) {
-    final authState = context.read<AuthBloc>().state;
-    final isSuperAdmin =
-        authState is AuthAuthenticated && authState.user.isSuperAdmin;
     return [
       _PageData(icon: Icons.contact_phone_rounded, label: "So'rovlar",         color: const Color(0xFF3B82F6), route: Routes.inquiries),
       _PageData(icon: Icons.groups_rounded,         label: "Guruhlar",          color: AppColors.primary,       route: Routes.groups,   pushRoute: false),
@@ -1094,10 +1236,6 @@ class _PageGrid extends StatelessWidget {
       _PageData(icon: Icons.analytics_rounded,      label: "Hisobotlar",        color: const Color(0xFF06B6D4), route: Routes.reports),
       _PageData(icon: Icons.person_rounded,         label: "O'qituvchilar",     color: AppColors.warning,       route: Routes.teachers),
       _PageData(icon: Icons.add_card_rounded,       label: "To'lov qo'shish",   color: const Color(0xFF8B5CF6), onTap: _showQuickPayment),
-      if (isSuperAdmin) ...[
-        _PageData(icon: Icons.business_rounded,             label: "Filiallar", color: const Color(0xFF0EA5E9), route: Routes.branches),
-        _PageData(icon: Icons.admin_panel_settings_rounded, label: "Adminlar",  color: const Color(0xFFEC4899), route: Routes.admins),
-      ],
     ];
   }
 

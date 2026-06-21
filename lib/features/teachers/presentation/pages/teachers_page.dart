@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/branch/branch_selection_cubit.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/router/routes.dart';
 import '../../data/models/teacher_model.dart';
@@ -12,9 +13,13 @@ class TeachersPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => getIt<TeacherBloc>()..add(TeacherLoadAll()),
-      child: const TeachersView(),
+    final branchId = context.watch<BranchSelectionCubit>().state.selectedBranchId;
+    return KeyedSubtree(
+      key: ValueKey(branchId),
+      child: BlocProvider(
+        create: (_) => getIt<TeacherBloc>()..add(TeacherLoadAll()),
+        child: const TeachersView(),
+      ),
     );
   }
 }
@@ -29,6 +34,8 @@ class TeachersView extends StatelessWidget {
         title: const Text('Teachers'),
       ),
       body: BlocConsumer<TeacherBloc, TeacherState>(
+        listenWhen: (_, curr) => curr is TeacherError || curr is TeacherActionSuccess,
+        buildWhen: (_, curr) => curr is! TeacherActionSuccess,
         listener: (context, state) {
           if (state is TeacherError) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -217,6 +224,8 @@ class TeacherFormDialog extends StatefulWidget {
 }
 
 class _TeacherFormDialogState extends State<TeacherFormDialog> {
+  static final _phoneRegExp = RegExp(r'^\+998[0-9]{9}$');
+
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _phoneController;
@@ -272,7 +281,7 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
                 if (value == null || value.trim().isEmpty) {
                   return 'Please enter phone number';
                 }
-                if (!RegExp(r'^\+998[0-9]{9}$').hasMatch(value)) {
+                if (!_phoneRegExp.hasMatch(value)) {
                   return 'Format: +998XXXXXXXXX';
                 }
                 return null;

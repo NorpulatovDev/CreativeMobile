@@ -28,6 +28,8 @@ class StudentDetailPage extends StatefulWidget {
 
 class _StudentDetailPageState extends State<StudentDetailPage>
     with SingleTickerProviderStateMixin {
+  static final _dayFormat = DateFormat('EEEE, dd MMM yyyy');
+
   late TabController _tabController;
   StudentModel? _student;
   List<EnrollmentModel> _enrollments = [];
@@ -476,7 +478,7 @@ class _StudentDetailPageState extends State<StudentDetailPage>
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 Text(
-                  DateFormat('EEEE, dd MMM yyyy').format(_selectedDay!),
+                  _dayFormat.format(_selectedDay!),
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
@@ -494,7 +496,7 @@ class _StudentDetailPageState extends State<StudentDetailPage>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: Text(
-              DateFormat('EEEE, dd MMM yyyy').format(_selectedDay!),
+              _dayFormat.format(_selectedDay!),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -614,6 +616,8 @@ class _StudentDetailPageState extends State<StudentDetailPage>
 }
 
 class _CustomCalendar extends StatelessWidget {
+  static final _monthFormat = DateFormat('MMMM yyyy');
+
   final DateTime selectedMonth;
   final DateTime? selectedDay;
   final Function(DateTime) onMonthChanged;
@@ -691,7 +695,7 @@ class _CustomCalendar extends StatelessWidget {
                   },
                 ),
                 Text(
-                  DateFormat('MMMM yyyy').format(selectedMonth),
+                  _monthFormat.format(selectedMonth),
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),

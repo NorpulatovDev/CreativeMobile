@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/branch/branch_selection_cubit.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/sms_service.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
@@ -17,9 +18,13 @@ class AttendancePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => getIt<AttendanceBloc>(),
-      child: const AttendanceView(),
+    final branchId = context.watch<BranchSelectionCubit>().state.selectedBranchId;
+    return KeyedSubtree(
+      key: ValueKey(branchId),
+      child: BlocProvider(
+        create: (_) => getIt<AttendanceBloc>(),
+        child: const AttendanceView(),
+      ),
     );
   }
 }
@@ -32,6 +37,8 @@ class AttendanceView extends StatefulWidget {
 }
 
 class _AttendanceViewState extends State<AttendanceView> {
+  static final _headerDateFormat = DateFormat('EEEE, dd MMMM yyyy');
+
   List<GroupModel> _groups = [];
   GroupModel? _selectedGroup;
   final DateTime _today = DateTime.now();
@@ -128,7 +135,7 @@ class _AttendanceViewState extends State<AttendanceView> {
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    DateFormat('EEEE, dd MMMM yyyy').format(_today),
+                    _headerDateFormat.format(_today),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           color: Theme.of(context).colorScheme.onPrimaryContainer,
                           fontWeight: FontWeight.bold,
@@ -256,6 +263,11 @@ class _AttendanceViewState extends State<AttendanceView> {
 
 // Read-only attendance card (no toggle switch)
 class _AttendanceCard extends StatelessWidget {
+  static const _presentBg   = Color(0x3348BB6E); // green 0.2
+  static const _absentBg    = Color(0x33F44336); // red 0.2
+  static const _presentChip = Color(0x1A48BB6E); // green 0.1
+  static const _absentChip  = Color(0x1AF44336); // red 0.1
+
   final AttendanceModel attendance;
 
   const _AttendanceCard({required this.attendance});
@@ -269,9 +281,7 @@ class _AttendanceCard extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(
           radius: 24,
-          backgroundColor: isPresent
-              ? Colors.green.withOpacity(0.2)
-              : Colors.red.withOpacity(0.2),
+          backgroundColor: isPresent ? _presentBg : _absentBg,
           child: Icon(
             isPresent ? Icons.check : Icons.close,
             color: isPresent ? Colors.green : Colors.red,
@@ -285,9 +295,7 @@ class _AttendanceCard extends StatelessWidget {
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: isPresent
-                ? Colors.green.withOpacity(0.1)
-                : Colors.red.withOpacity(0.1),
+            color: isPresent ? _presentChip : _absentChip,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isPresent ? Colors.green : Colors.red,
@@ -323,6 +331,9 @@ class TakeAttendanceDialog extends StatefulWidget {
 }
 
 class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
+  static final _smsSmsDateFormat = DateFormat('dd.MM.yyyy');
+  static final _dialogHeaderDateFormat = DateFormat('dd MMMM yyyy');
+
   List<EnrollmentModel> _enrollments = [];
   Map<int, StudentModel> _studentDetails = {};
   Map<int, bool> _attendanceStatus = {};
@@ -372,7 +383,7 @@ class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
   Future<void> _sendSms(int studentId) async {
     final student = _studentDetails[studentId];
     if (student == null) return;
-    final dateStr = DateFormat('dd.MM.yyyy').format(DateTime.now());
+    final dateStr = _smsSmsDateFormat.format(DateTime.now());
     final message =
         "Hurmatli ota-ona,\nCreative O’quv Markazi ma’muriyati sizga ma’lum qiladiki, ${student.fullName} bugun ($dateStr) darsga kelmadi.\nIltimos, kelmaslik sababini bizga ma’lum qilishingizni so’raymiz.";
     await getIt<SmsService>().send(student.parentPhoneNumber, message);
@@ -423,7 +434,7 @@ class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      DateFormat('dd MMMM yyyy').format(today),
+                      _dialogHeaderDateFormat.format(today),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w500,
                           ),
@@ -521,6 +532,11 @@ class _TakeAttendanceDialogState extends State<TakeAttendanceDialog> {
 }
 
 class _StudentAttendanceTile extends StatelessWidget {
+  static const _presentBg  = Color(0x1A48BB6E); // green 0.1
+  static const _absentBg   = Color(0x1AF44336); // red 0.1
+  static const _presentRing = Color(0x3348BB6E); // green 0.2
+  static const _absentRing  = Color(0x33F44336); // red 0.2
+
   final String studentName;
   final String parentPhone;
   final bool isPresent;
@@ -536,9 +552,7 @@ class _StudentAttendanceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: isPresent
-          ? Colors.green.withOpacity(0.1)
-          : Colors.red.withOpacity(0.1),
+      color: isPresent ? _presentBg : _absentBg,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -559,9 +573,7 @@ class _StudentAttendanceTile extends StatelessWidget {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: isPresent
-                      ? Colors.green.withOpacity(0.2)
-                      : Colors.red.withOpacity(0.2),
+                  color: isPresent ? _presentRing : _absentRing,
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: isPresent ? Colors.green : Colors.red,

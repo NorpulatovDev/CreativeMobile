@@ -12,7 +12,15 @@ abstract class GroupEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-class GroupLoadAll extends GroupEvent {}
+class GroupLoadAll extends GroupEvent {
+  final int? year;
+  final int? month;
+
+  const GroupLoadAll({this.year, this.month});
+
+  @override
+  List<Object?> get props => [year, month];
+}
 
 class GroupCreate extends GroupEvent {
   final String name;
@@ -111,7 +119,10 @@ class GroupBloc extends Bloc<GroupEvent, GroupState> {
     Emitter<GroupState> emit,
   ) async {
     emit(GroupLoading());
-    final (groups, failure) = await _repository.getAllSortedByTeacher();
+    final (groups, failure) = await _repository.getAllSortedByTeacher(
+      year: event.year,
+      month: event.month,
+    );
     if (failure != null) {
       emit(GroupError(failure.message));
     } else {

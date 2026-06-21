@@ -59,6 +59,7 @@ class _DailyReportTabState extends State<DailyReportTab>
     super.build(context);
 
     return BlocBuilder<ReportBloc, ReportState>(
+      buildWhen: (_, curr) => curr is ReportLoading || curr is ReportDailyLoaded || curr is ReportError,
       builder: (context, state) {
         if (state is ReportLoading) {
           return const Center(child: CircularProgressIndicator());
@@ -88,6 +89,8 @@ class _DailyReportTabState extends State<DailyReportTab>
 }
 
 class _DailyReportContent extends StatelessWidget {
+  static final _dateFormat = DateFormat('EEEE, MMMM dd, yyyy');
+
   final DailyReport report;
   final DateTime selectedDate;
   final VoidCallback onDateTap;
@@ -108,7 +111,7 @@ class _DailyReportContent extends StatelessWidget {
           child: ListTile(
             leading: const Icon(Icons.calendar_today),
             title: Text(
-              DateFormat('EEEE, MMMM dd, yyyy').format(selectedDate),
+              _dateFormat.format(selectedDate),
             ),
             trailing: const Icon(Icons.arrow_drop_down),
             onTap: onDateTap,

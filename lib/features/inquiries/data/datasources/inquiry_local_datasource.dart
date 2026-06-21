@@ -49,10 +49,6 @@ class InquiryLocalDataSource {
         return 'NEW';
       case InquiryStatus.contacted:
         return 'CONTACTED';
-      case InquiryStatus.enrolled:
-        return 'ENROLLED';
-      case InquiryStatus.rejected:
-        return 'REJECTED';
     }
   }
 }

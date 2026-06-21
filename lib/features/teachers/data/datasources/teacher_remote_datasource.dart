@@ -1,5 +1,6 @@
 import '../../../../core/api/api_client.dart';
 import '../models/teacher_model.dart';
+import '../models/teacher_monthly_report_model.dart';
 
 abstract class TeacherRemoteDataSource {
   Future<List<TeacherModel>> getAll();
@@ -7,6 +8,7 @@ abstract class TeacherRemoteDataSource {
   Future<TeacherModel> create(TeacherRequest request);
   Future<TeacherModel> update(int id, TeacherRequest request);
   Future<void> delete(int id);
+  Future<TeacherMonthlyReport> getMonthlyReport(int id, int year, int month);
 }
 
 class TeacherRemoteDataSourceImpl implements TeacherRemoteDataSource {
@@ -50,5 +52,14 @@ class TeacherRemoteDataSourceImpl implements TeacherRemoteDataSource {
   @override
   Future<void> delete(int id) async {
     await _apiClient.delete('/api/teachers/$id');
+  }
+
+  @override
+  Future<TeacherMonthlyReport> getMonthlyReport(int id, int year, int month) async {
+    final response = await _apiClient.get<Map<String, dynamic>>(
+      '/api/teachers/$id/monthly-report',
+      queryParameters: {'year': year, 'month': month},
+    );
+    return TeacherMonthlyReport.fromJson(response.data!);
   }
 }

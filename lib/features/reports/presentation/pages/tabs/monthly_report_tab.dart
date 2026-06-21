@@ -94,15 +94,17 @@ class MonthlyReportTab extends StatelessWidget {
 // ── Year selector ────────────────────────────────────────────────────────────
 
 class _YearSelector extends StatelessWidget {
+  // Computed once at class-load time — the app never spans a year boundary
+  // in a single session, so this list never goes stale.
+  static final _years = List.generate(
+    DateTime.now().year - 2019,
+    (i) => DateTime.now().year - i,
+  );
+
   final int selectedYear;
   final ValueChanged<int> onChanged;
 
   const _YearSelector({required this.selectedYear, required this.onChanged});
-
-  List<int> get _years {
-    final current = DateTime.now().year;
-    return List.generate(current - 2019, (i) => current - i);
-  }
 
   @override
   Widget build(BuildContext context) {

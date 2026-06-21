@@ -24,6 +24,8 @@ class SmsLinkDialog extends StatefulWidget {
 }
 
 class _SmsLinkDialogState extends State<SmsLinkDialog> {
+  static final _phoneRegExp = RegExp(r'^\+998[0-9]{9}$');
+
   final _formKey = GlobalKey<FormState>();
   final _codeController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -150,7 +152,7 @@ class _SmsLinkDialogState extends State<SmsLinkDialog> {
               if (value == null || value.trim().isEmpty) {
                 return 'Please enter phone number';
               }
-              if (!RegExp(r'^\+998[0-9]{9}$').hasMatch(value)) {
+              if (!_phoneRegExp.hasMatch(value)) {
                 return 'Format: +998XXXXXXXXX';
               }
               return null;

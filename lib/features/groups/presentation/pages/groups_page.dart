@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/branch/branch_selection_cubit.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/router/routes.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -16,9 +17,17 @@ class GroupsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => getIt<GroupBloc>()..add(GroupLoadAll()),
-      child: const GroupsView(),
+    final branchId = context.watch<BranchSelectionCubit>().state.selectedBranchId;
+    return KeyedSubtree(
+      key: ValueKey(branchId),
+      child: BlocProvider(
+        create: (_) {
+          final now = DateTime.now();
+          return getIt<GroupBloc>()
+            ..add(GroupLoadAll(year: now.year, month: now.month));
+        },
+        child: const GroupsView(),
+      ),
     );
   }
 }
@@ -33,11 +42,57 @@ class GroupsView extends StatefulWidget {
 class _GroupsViewState extends State<GroupsView> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  late int _selectedYear;
+  late int _selectedMonth;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _selectedYear = now.year;
+    _selectedMonth = now.month;
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  bool get _isCurrentMonth {
+    final now = DateTime.now();
+    return _selectedYear == now.year && _selectedMonth == now.month;
+  }
+
+  void _prevMonth() {
+    setState(() {
+      if (_selectedMonth == 1) {
+        _selectedMonth = 12;
+        _selectedYear--;
+      } else {
+        _selectedMonth--;
+      }
+    });
+    _reload();
+  }
+
+  void _nextMonth() {
+    if (_isCurrentMonth) return;
+    setState(() {
+      if (_selectedMonth == 12) {
+        _selectedMonth = 1;
+        _selectedYear++;
+      } else {
+        _selectedMonth++;
+      }
+    });
+    _reload();
+  }
+
+  void _reload() {
+    context.read<GroupBloc>().add(
+          GroupLoadAll(year: _selectedYear, month: _selectedMonth),
+        );
   }
 
   void _showSnackBar(String message, Color backgroundColor, IconData icon) {
@@ -59,12 +114,19 @@ class _GroupsViewState extends State<GroupsView> {
   }
 
   Future<void> _onRefresh(BuildContext context) {
-    context.read<GroupBloc>().add(GroupLoadAll());
+    context.read<GroupBloc>().add(
+          GroupLoadAll(year: _selectedYear, month: _selectedMonth),
+        );
     return context
         .read<GroupBloc>()
         .stream
         .firstWhere((s) => s is GroupLoaded || s is GroupError);
   }
+
+  static const List<String> _monthNames = [
+    'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+    'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -159,7 +221,70 @@ class _GroupsViewState extends State<GroupsView> {
               ),
             ),
           ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.neutral200),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left_rounded),
+                      color: AppColors.neutral600,
+                      onPressed: _prevMonth,
+                    ),
+                    GestureDetector(
+                      onTap: _isCurrentMonth
+                          ? null
+                          : () {
+                              final now = DateTime.now();
+                              setState(() {
+                                _selectedYear = now.year;
+                                _selectedMonth = now.month;
+                              });
+                              _reload();
+                            },
+                      child: Column(
+                        children: [
+                          Text(
+                            _monthNames[_selectedMonth - 1],
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.neutral900,
+                            ),
+                          ),
+                          Text(
+                            '$_selectedYear',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.neutral500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right_rounded),
+                      color: _isCurrentMonth
+                          ? AppColors.neutral300
+                          : AppColors.neutral600,
+                      onPressed: _isCurrentMonth ? null : _nextMonth,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
           BlocConsumer<GroupBloc, GroupState>(
+            listenWhen: (_, curr) => curr is GroupError || curr is GroupActionSuccess,
+            buildWhen: (_, curr) => curr is! GroupActionSuccess,
             listener: (context, state) {
               if (state is GroupError) {
                 _showSnackBar(
@@ -317,11 +442,17 @@ class _GroupsViewState extends State<GroupsView> {
 }
 
 class _GroupCard extends StatelessWidget {
+  static const _cardBorder   = Color(0x80E5E7EB); // neutral200 @ 0.5
+  static const _cardShadow   = Color(0x080F172A); // neutral900 @ 0.03
+
   final GroupModel group;
   const _GroupCard({required this.group});
 
   @override
   Widget build(BuildContext context) {
+    final groupColor = _getGroupColor(group.name);
+    final groupColorBg = Color.fromARGB(
+      26, groupColor.r.round(), groupColor.g.round(), groupColor.b.round()); // 0.1 alpha
     final debt = group.totalAmountToPay - group.totalPaid;
     final isDebt = debt > 0;
     final progress = group.totalAmountToPay > 0
@@ -338,10 +469,10 @@ class _GroupCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.surfaceLight,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.neutral200.withOpacity(0.5)),
+            border: Border.all(color: _cardBorder),
             boxShadow: [
               BoxShadow(
-                color: AppColors.neutral900.withOpacity(0.03),
+                color: _cardShadow,
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
@@ -356,7 +487,7 @@ class _GroupCard extends StatelessWidget {
                     width: 52,
                     height: 52,
                     decoration: BoxDecoration(
-                      color: _getGroupColor(group.name).withOpacity(0.1),
+                      color: groupColorBg,
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Center(
@@ -496,15 +627,17 @@ class _GroupCard extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 8),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: progress,
-                            backgroundColor: AppColors.neutral200,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              isDebt ? AppColors.warning : AppColors.success,
+                        RepaintBoundary(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              backgroundColor: AppColors.neutral200,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                isDebt ? AppColors.warning : AppColors.success,
+                              ),
+                              minHeight: 6,
                             ),
-                            minHeight: 6,
                           ),
                         ),
                       ],

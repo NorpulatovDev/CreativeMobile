@@ -61,6 +61,8 @@ class _PaymentFormBody extends StatefulWidget {
 }
 
 class _PaymentFormBodyState extends State<_PaymentFormBody> {
+  static final _monthKeyFormat = DateFormat('yyyy-MM');
+
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amountController;
 
@@ -461,7 +463,7 @@ class _PaymentFormBodyState extends State<_PaymentFormBody> {
     final now = DateTime.now();
     return List.generate(7, (i) {
       final date = DateTime(now.year, now.month + i - 3, 1);
-      return DateFormat('yyyy-MM').format(date);
+      return _monthKeyFormat.format(date);
     });
   }
 

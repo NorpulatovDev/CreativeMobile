@@ -50,15 +50,20 @@ class SyncQueue {
   static const String _boxName = 'sync_queue';
   late Box _box;
 
+  // Sorted cache — null means dirty; rebuilt on next getAll() call.
+  List<SyncOperation>? _sortedCache;
+
   Future<void> initialize() async {
     _box = await Hive.openBox(_boxName);
   }
 
   Future<void> enqueue(SyncOperation operation) async {
     await _box.put(operation.id, operation.toMap());
+    _sortedCache = null;
   }
 
   List<SyncOperation> getAll() {
+    if (_sortedCache != null) return _sortedCache!;
     final operations = <SyncOperation>[];
     for (final key in _box.keys) {
       final map = _box.get(key);
@@ -67,20 +72,23 @@ class SyncQueue {
       }
     }
     operations.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    return operations;
+    return _sortedCache = operations;
   }
 
   int get pendingCount => _box.length;
 
   Future<void> remove(String operationId) async {
     await _box.delete(operationId);
+    _sortedCache = null;
   }
 
   Future<void> update(SyncOperation operation) async {
     await _box.put(operation.id, operation.toMap());
+    _sortedCache = null;
   }
 
   Future<void> clear() async {
     await _box.clear();
+    _sortedCache = null;
   }
 }

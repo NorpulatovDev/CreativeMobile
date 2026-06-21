@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/branch/branch_selection_cubit.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../bloc/report_bloc.dart';
@@ -12,9 +13,13 @@ class ReportsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => getIt<ReportBloc>(),
-      child: const ReportsView(),
+    final branchId = context.watch<BranchSelectionCubit>().state.selectedBranchId;
+    return KeyedSubtree(
+      key: ValueKey(branchId),
+      child: BlocProvider(
+        create: (_) => getIt<ReportBloc>(),
+        child: const ReportsView(),
+      ),
     );
   }
 }

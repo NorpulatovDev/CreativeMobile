@@ -12,6 +12,7 @@ class GroupPaymentsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<GroupPaymentsCubit, GroupPaymentsState>(
+      buildWhen: (prev, curr) => prev.runtimeType != curr.runtimeType || curr is GroupPaymentsLoaded,
       builder: (context, state) {
         if (state is GroupPaymentsInitial || state is GroupPaymentsLoading) {
           return const Center(

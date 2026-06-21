@@ -56,6 +56,7 @@ class _GroupAttendanceTabState extends State<GroupAttendanceTab> {
     return BlocProvider.value(
       value: widget.bloc,
       child: BlocBuilder<AttendanceBloc, AttendanceState>(
+        buildWhen: (_, curr) => curr is! AttendanceActionSuccess,
         builder: (context, state) {
           if (state is AttendanceLoading) {
             return const Center(

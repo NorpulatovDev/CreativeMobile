@@ -10,6 +10,10 @@ class SyncStatusBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SyncStatusCubit, SyncStatusState>(
+      buildWhen: (prev, curr) =>
+          prev.isOnline != curr.isOnline ||
+          prev.syncStatus != curr.syncStatus ||
+          prev.pendingCount != curr.pendingCount,
       builder: (context, state) {
         if (state.isOnline &&
             state.syncStatus == SyncStatus.idle &&

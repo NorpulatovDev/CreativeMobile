@@ -3,7 +3,7 @@ import '../models/group_model.dart';
 
 abstract class GroupRemoteDataSource {
   Future<List<GroupModel>> getAll();
-  Future<List<GroupModel>> getAllSortedByTeacher();
+  Future<List<GroupModel>> getAllSortedByTeacher({int? year, int? month});
   Future<List<GroupModel>> getByTeacherId(int teacherId);
   Future<GroupModel> getById(int id);
   Future<GroupModel> create(GroupRequest request);
@@ -25,9 +25,13 @@ class GroupRemoteDataSourceImpl implements GroupRemoteDataSource {
   }
 
   @override
-  Future<List<GroupModel>> getAllSortedByTeacher() async {
-    final response =
-        await _apiClient.get<List<dynamic>>('/api/groups/sorted-by-teacher');
+  Future<List<GroupModel>> getAllSortedByTeacher({int? year, int? month}) async {
+    final response = await _apiClient.get<List<dynamic>>(
+      '/api/groups/sorted-by-teacher',
+      queryParameters: (year != null && month != null)
+          ? {'year': year, 'month': month}
+          : null,
+    );
     return (response.data ?? [])
         .map((json) => GroupModel.fromJson(json as Map<String, dynamic>))
         .toList();

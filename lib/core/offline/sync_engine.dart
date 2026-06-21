@@ -36,7 +36,7 @@ class SyncEngine {
         _connectivity = connectivity,
         _idMapping = idMapping;
 
-  Stream<SyncStatus> get statusStream => _statusController.stream;
+  Stream<SyncStatus> get statusStream => _statusController.stream.distinct();
   SyncStatus get currentStatus => _currentStatus;
   int get pendingCount => _queue.pendingCount;
 

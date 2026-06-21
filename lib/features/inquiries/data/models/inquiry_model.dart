@@ -7,10 +7,6 @@ enum InquiryStatus {
   newInquiry,
   @JsonValue('CONTACTED')
   contacted,
-  @JsonValue('ENROLLED')
-  enrolled,
-  @JsonValue('REJECTED')
-  rejected,
 }
 
 @JsonSerializable()
@@ -19,7 +15,8 @@ class InquiryModel {
   final String fullName;
   final String parentName;
   final String parentPhoneNumber;
-  final String? interestedCourses;
+  final int? inquiryGroupId;
+  final String? inquiryGroupName;
   final InquiryStatus status;
   final String? notes;
   final DateTime createdAt;
@@ -30,7 +27,8 @@ class InquiryModel {
     required this.fullName,
     required this.parentName,
     required this.parentPhoneNumber,
-    this.interestedCourses,
+    this.inquiryGroupId,
+    this.inquiryGroupName,
     required this.status,
     this.notes,
     required this.createdAt,
@@ -48,7 +46,7 @@ class InquiryRequest {
   final String fullName;
   final String parentName;
   final String parentPhoneNumber;
-  final String? interestedCourses;
+  final int inquiryGroupId;
   final InquiryStatus? status;
   final String? notes;
 
@@ -56,7 +54,7 @@ class InquiryRequest {
     required this.fullName,
     required this.parentName,
     required this.parentPhoneNumber,
-    this.interestedCourses,
+    required this.inquiryGroupId,
     this.status,
     this.notes,
   });

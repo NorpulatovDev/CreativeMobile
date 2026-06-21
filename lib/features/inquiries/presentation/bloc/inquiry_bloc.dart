@@ -27,20 +27,20 @@ class InquiryCreate extends InquiryEvent {
   final String fullName;
   final String parentName;
   final String parentPhoneNumber;
-  final String? interestedCourses;
+  final int inquiryGroupId;
   final String? notes;
 
   const InquiryCreate({
     required this.fullName,
     required this.parentName,
     required this.parentPhoneNumber,
-    this.interestedCourses,
+    required this.inquiryGroupId,
     this.notes,
   });
 
   @override
   List<Object?> get props =>
-      [fullName, parentName, parentPhoneNumber, interestedCourses, notes];
+      [fullName, parentName, parentPhoneNumber, inquiryGroupId, notes];
 }
 
 class InquiryUpdate extends InquiryEvent {
@@ -48,7 +48,7 @@ class InquiryUpdate extends InquiryEvent {
   final String fullName;
   final String parentName;
   final String parentPhoneNumber;
-  final String? interestedCourses;
+  final int inquiryGroupId;
   final InquiryStatus status;
   final String? notes;
 
@@ -57,21 +57,14 @@ class InquiryUpdate extends InquiryEvent {
     required this.fullName,
     required this.parentName,
     required this.parentPhoneNumber,
-    this.interestedCourses,
+    required this.inquiryGroupId,
     required this.status,
     this.notes,
   });
 
   @override
-  List<Object?> get props => [
-        id,
-        fullName,
-        parentName,
-        parentPhoneNumber,
-        interestedCourses,
-        status,
-        notes
-      ];
+  List<Object?> get props =>
+      [id, fullName, parentName, parentPhoneNumber, inquiryGroupId, status, notes];
 }
 
 class InquiryDelete extends InquiryEvent {
@@ -174,7 +167,7 @@ class InquiryBloc extends Bloc<InquiryEvent, InquiryState> {
         fullName: event.fullName,
         parentName: event.parentName,
         parentPhoneNumber: event.parentPhoneNumber,
-        interestedCourses: event.interestedCourses,
+        inquiryGroupId: event.inquiryGroupId,
         notes: event.notes,
       ),
     );
@@ -199,7 +192,7 @@ class InquiryBloc extends Bloc<InquiryEvent, InquiryState> {
         fullName: event.fullName,
         parentName: event.parentName,
         parentPhoneNumber: event.parentPhoneNumber,
-        interestedCourses: event.interestedCourses,
+        inquiryGroupId: event.inquiryGroupId,
         status: event.status,
         notes: event.notes,
       ),
@@ -237,10 +230,6 @@ class InquiryBloc extends Bloc<InquiryEvent, InquiryState> {
         return 'NEW';
       case InquiryStatus.contacted:
         return 'CONTACTED';
-      case InquiryStatus.enrolled:
-        return 'ENROLLED';
-      case InquiryStatus.rejected:
-        return 'REJECTED';
     }
   }
 }

@@ -1,48 +1,36 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
-import 'package:flutter_sms/flutter_sms.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 enum SmsResult { sent, failed, permissionDenied, permissionPermanentlyDenied, notAvailable }
 
 class SmsService {
+  static const _channel = MethodChannel('com.example.creative/sms');
+
   Future<SmsResult> send(String phone, String message) async {
     if (kIsWeb) return SmsResult.notAvailable;
 
-    if (Platform.isAndroid) {
-      final status = await Permission.sms.status;
-      if (status.isPermanentlyDenied) {
-        return SmsResult.permissionPermanentlyDenied;
-      }
-      if (!status.isGranted) {
-        final result = await Permission.sms.request();
-        if (result.isPermanentlyDenied) {
-          return SmsResult.permissionPermanentlyDenied;
-        }
-        if (!result.isGranted) {
-          return SmsResult.permissionDenied;
-        }
-      }
-    }
+    final status = await Permission.sms.status;
+    if (status.isPermanentlyDenied) return SmsResult.permissionPermanentlyDenied;
 
-    if (Platform.isIOS) {
-      final capable = await canSendSMS();
-      if (!capable) return SmsResult.notAvailable;
+    if (!status.isGranted) {
+      final result = await Permission.sms.request();
+      if (result.isPermanentlyDenied) return SmsResult.permissionPermanentlyDenied;
+      if (!result.isGranted) return SmsResult.permissionDenied;
     }
 
     final cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
     try {
-      final result = await sendSMS(
-        message: message,
-        recipients: [cleaned],
-        sendDirect: Platform.isAndroid,
-      );
-      return result.toLowerCase().contains('sent')
-          ? SmsResult.sent
-          : SmsResult.failed;
-    } catch (_) {
+      await _channel.invokeMethod('sendSms', {
+        'phone': cleaned,
+        'message': message,
+      });
+      return SmsResult.sent;
+    } on PlatformException catch (e) {
+      if (e.code == 'PERMISSION_DENIED') return SmsResult.permissionDenied;
       return SmsResult.failed;
+    } catch (_) {
+      return SmsResult.notAvailable;
     }
   }
 }

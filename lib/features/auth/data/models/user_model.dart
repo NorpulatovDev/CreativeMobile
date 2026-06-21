@@ -26,6 +26,8 @@ class UserModel extends Equatable {
 
   Map<String, dynamic> toJson() => _$UserModelToJson(this);
 
+  bool get isSuperAdmin => role == 'SUPER_ADMIN';
+
   @override
   List<Object?> get props => [adminId, username, role, accessToken, branchId, branchName];
 }

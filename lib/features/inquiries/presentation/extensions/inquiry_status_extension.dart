@@ -10,10 +10,6 @@ extension InquiryStatusExtension on InquiryStatus {
         return 'Yangi';
       case InquiryStatus.contacted:
         return 'Bog\'lanildi';
-      case InquiryStatus.enrolled:
-        return 'Ro\'yxatdan o\'tdi';
-      case InquiryStatus.rejected:
-        return 'Rad etildi';
     }
   }
 
@@ -23,10 +19,6 @@ extension InquiryStatusExtension on InquiryStatus {
         return AppColors.primary;
       case InquiryStatus.contacted:
         return AppColors.warning;
-      case InquiryStatus.enrolled:
-        return AppColors.success;
-      case InquiryStatus.rejected:
-        return AppColors.error;
     }
   }
 
@@ -36,10 +28,6 @@ extension InquiryStatusExtension on InquiryStatus {
         return Icons.fiber_new_rounded;
       case InquiryStatus.contacted:
         return Icons.phone_in_talk_rounded;
-      case InquiryStatus.enrolled:
-        return Icons.check_circle_rounded;
-      case InquiryStatus.rejected:
-        return Icons.cancel_rounded;
     }
   }
 }

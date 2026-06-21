@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 
 import 'core/api/api_client.dart';
+import 'core/branch/branch_selection_cubit.dart';
 import 'core/di/injection.dart';
 import 'core/offline/sync_status_cubit.dart';
 import 'core/router/app_router.dart';
@@ -12,7 +13,6 @@ import 'core/widgets/sync_status_banner.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 
 void main() async {
-  
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Hive for offline storage
@@ -48,6 +48,7 @@ class MyApp extends StatelessWidget {
       providers: [
         BlocProvider.value(value: getIt<AuthBloc>()),
         BlocProvider.value(value: getIt<SyncStatusCubit>()),
+        BlocProvider.value(value: getIt<BranchSelectionCubit>()),
       ],
       child: MaterialApp.router(
         title: 'Creative O\'quv Markazi',

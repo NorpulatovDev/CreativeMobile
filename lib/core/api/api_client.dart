@@ -26,8 +26,10 @@ class ApiClient {
   static Dio _buildDio() => Dio(BaseOptions(
         baseUrl: const String.fromEnvironment(
           'API_URL',
-          defaultValue:
-              'https://creativelearningcenter-production.up.railway.app/',
+          // prod: https://nr-ogabek.uz/
+          // Android emulator: http://10.0.2.2:8080
+          // iOS simulator:    http://localhost:8080
+          defaultValue: 'https://nr-ogabek.uz/',
         ),
         connectTimeout: const Duration(seconds: 30),
         receiveTimeout: const Duration(seconds: 30),
@@ -100,6 +102,14 @@ class AuthInterceptor extends Interceptor {
       final token = await _tokenStorage.getToken();
       if (token != null) {
         options.headers['Authorization'] = 'Bearer $token';
+      }
+      // Sync reads — both methods read from SharedPreferences' in-memory cache,
+      // so there is no async overhead or race against concurrent requests.
+      final activeBranchId = _tokenStorage.getActiveBranchFilterIdSync();
+      final branchId =
+          activeBranchId ?? (_tokenStorage.getUserDataSync()?['branchId'] as int?);
+      if (branchId != null) {
+        options.headers['X-Branch-Filter'] = branchId.toString();
       }
     }
     handler.next(options);

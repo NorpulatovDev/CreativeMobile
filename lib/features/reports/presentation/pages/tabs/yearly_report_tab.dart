@@ -44,7 +44,8 @@ class _YearlyReportTabState extends State<YearlyReportTab> with AutomaticKeepAli
     super.build(context);
 
     return BlocConsumer<ReportBloc, ReportState>(
-      listenWhen: (previous, current) => current is ReportYearlyLoaded || current is ReportError,
+      listenWhen: (_, curr) => curr is ReportYearlyLoaded || curr is ReportError,
+      buildWhen: (_, curr) => curr is ReportLoading || curr is ReportYearlyLoaded || curr is ReportError,
       listener: (context, state) {
         if (state is ReportYearlyLoaded) {
           setState(() {
