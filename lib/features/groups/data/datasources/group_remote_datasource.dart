@@ -5,6 +5,9 @@ abstract class GroupRemoteDataSource {
   Future<List<GroupModel>> getAll();
   Future<List<GroupModel>> getAllSortedByTeacher({int? year, int? month});
   Future<List<GroupModel>> getByTeacherId(int teacherId);
+  /// Groups assigned to the logged-in TEACHER. Server derives the teacher
+  /// from the JWT, so this only ever returns that teacher's own groups.
+  Future<List<GroupModel>> getMine();
   Future<GroupModel> getById(int id);
   Future<GroupModel> create(GroupRequest request);
   Future<GroupModel> update(int id, GroupRequest request);
@@ -41,6 +44,14 @@ class GroupRemoteDataSourceImpl implements GroupRemoteDataSource {
   Future<List<GroupModel>> getByTeacherId(int teacherId) async {
     final response =
         await _apiClient.get<List<dynamic>>('/api/groups/teacher/$teacherId');
+    return (response.data ?? [])
+        .map((json) => GroupModel.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<List<GroupModel>> getMine() async {
+    final response = await _apiClient.get<List<dynamic>>('/api/groups/mine');
     return (response.data ?? [])
         .map((json) => GroupModel.fromJson(json as Map<String, dynamic>))
         .toList();

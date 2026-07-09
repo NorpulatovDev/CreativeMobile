@@ -7,14 +7,14 @@ part of 'admin_model.dart';
 // **************************************************************************
 
 AdminModel _$AdminModelFromJson(Map<String, dynamic> json) => AdminModel(
-      id: (json['id'] as num).toInt(),
-      username: json['username'] as String,
-      role: json['role'] as String,
-      branchId: (json['branchId'] as num?)?.toInt(),
-      branchName: json['branchName'] as String?,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
-    );
+  id: (json['id'] as num).toInt(),
+  username: json['username'] as String,
+  role: json['role'] as String,
+  branchId: (json['branchId'] as num?)?.toInt(),
+  branchName: json['branchName'] as String?,
+  createdAt: DateTime.parse(json['createdAt'] as String),
+  updatedAt: DateTime.parse(json['updatedAt'] as String),
+);
 
 Map<String, dynamic> _$AdminModelToJson(AdminModel instance) =>
     <String, dynamic>{
@@ -28,11 +28,11 @@ Map<String, dynamic> _$AdminModelToJson(AdminModel instance) =>
     };
 
 AdminRequest _$AdminRequestFromJson(Map<String, dynamic> json) => AdminRequest(
-      username: json['username'] as String,
-      password: json['password'] as String,
-      role: json['role'] as String,
-      branchId: (json['branchId'] as num?)?.toInt(),
-    );
+  username: json['username'] as String,
+  password: json['password'] as String,
+  role: json['role'] as String,
+  branchId: (json['branchId'] as num?)?.toInt(),
+);
 
 Map<String, dynamic> _$AdminRequestToJson(AdminRequest instance) =>
     <String, dynamic>{

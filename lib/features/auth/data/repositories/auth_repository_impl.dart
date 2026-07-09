@@ -32,6 +32,7 @@ class AuthRepositoryImpl implements AuthRepository {
         role: response.role,
         branchId: response.branchId,
         branchName: response.branchName,
+        teacherId: response.teacherId,
       );
 
       final user = UserModel(
@@ -41,6 +42,7 @@ class AuthRepositoryImpl implements AuthRepository {
         accessToken: response.accessToken,
         branchId: response.branchId,
         branchName: response.branchName,
+        teacherId: response.teacherId,
       );
 
       return (user, null);
@@ -74,6 +76,7 @@ class AuthRepositoryImpl implements AuthRepository {
       accessToken: accessToken,
       branchId: userData['branchId'] as int?,
       branchName: userData['branchName'] as String?,
+      teacherId: userData['teacherId'] as int?,
     );
   }
 

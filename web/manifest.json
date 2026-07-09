@@ -1,11 +1,11 @@
 {
-    "name": "creative",
-    "short_name": "creative",
+    "name": "Creative — O'qituvchi",
+    "short_name": "Creative",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#6750A4",
+    "theme_color": "#6750A4",
+    "description": "Creative O'quv Markazi — o'qituvchilar uchun davomat ilovasi",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -9,6 +9,7 @@ import 'core/di/injection.dart';
 import 'core/offline/sync_status_cubit.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/sms_progress_banner.dart';
 import 'core/widgets/sync_status_banner.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 
@@ -59,6 +60,7 @@ class MyApp extends StatelessWidget {
           return Column(
             children: [
               const SyncStatusBanner(),
+              const SmsProgressBanner(),
               Expanded(child: child ?? const SizedBox.shrink()),
             ],
           );

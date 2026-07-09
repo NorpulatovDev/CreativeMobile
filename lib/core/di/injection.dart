@@ -22,6 +22,7 @@ import '../offline/sync_status_cubit.dart';
 import '../offline/temp_id_generator.dart';
 import '../router/app_router.dart';
 import '../services/sms_service.dart';
+import '../services/sms_queue_processor.dart';
 import '../storage/token_storage.dart';
 
 // Auth
@@ -69,6 +70,14 @@ import '../../features/attendance/data/datasources/attendance_local_datasource.d
 import '../../features/attendance/data/datasources/attendance_sync_handler.dart';
 import '../../features/attendance/data/repositories/attendance_repository.dart';
 import '../../features/attendance/presentation/bloc/attendance_bloc.dart';
+
+// Attendance Submissions (teacher submit + admin approval workflow)
+import '../../features/attendance_submission/data/datasources/attendance_submission_remote_datasource.dart';
+import '../../features/attendance_submission/data/repositories/attendance_submission_repository.dart';
+
+// SMS (failed/stuck message visibility + manual retry)
+import '../../features/sms/data/datasources/sms_remote_datasource.dart';
+import '../../features/sms/data/repositories/sms_repository.dart';
 
 // Reports
 import '../../features/reports/data/datasources/report_remote_datasource.dart';
@@ -207,6 +216,22 @@ Future<void> configureDependencies() async {
   );
   getIt.registerFactory<AttendanceBloc>(() => AttendanceBloc(getIt()));
 
+  // Attendance Submissions Feature (teacher submit + admin approval, online-only)
+  getIt.registerSingleton<AttendanceSubmissionRemoteDataSource>(
+    AttendanceSubmissionRemoteDataSourceImpl(getIt()),
+  );
+  getIt.registerSingleton<AttendanceSubmissionRepository>(
+    AttendanceSubmissionRepositoryImpl(getIt(), getIt()),
+  );
+
+  // SMS Feature (failed-message visibility + manual retry, online-only)
+  getIt.registerSingleton<SmsRemoteDataSource>(
+    SmsRemoteDataSourceImpl(getIt()),
+  );
+  getIt.registerSingleton<SmsRepository>(
+    SmsRepositoryImpl(getIt(), getIt()),
+  );
+
   // Reports Feature (read-only cache, no sync)
   getIt.registerSingleton<ReportRemoteDataSource>(
     ReportRemoteDataSourceImpl(getIt()),
@@ -264,6 +289,11 @@ Future<void> configureDependencies() async {
 
   // SMS
   getIt.registerSingleton<SmsService>(SmsService());
+
+  // Centralized SMS sending from the Admin device (foreground queue processor)
+  getIt.registerSingleton<SmsQueueProcessor>(
+    SmsQueueProcessor(getIt(), getIt(), getIt()),
+  );
 
   // Branches Feature (super admin only, no offline)
   final branchLocal = BranchLocalDataSource();

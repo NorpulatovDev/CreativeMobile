@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only: allow cleartext HTTP to local dev backends.
+     Release builds do not include this file, so production stays HTTPS-only. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>      <!-- Android emulator → host -->
+        <domain includeSubdomains="true">10.0.3.2</domain>      <!-- Genymotion → host -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">192.168.100.8</domain> <!-- host LAN IP (physical device) -->
+    </domain-config>
+</network-security-config>

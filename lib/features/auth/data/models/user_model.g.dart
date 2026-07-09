@@ -13,6 +13,7 @@ UserModel _$UserModelFromJson(Map<String, dynamic> json) => UserModel(
   accessToken: json['accessToken'] as String,
   branchId: (json['branchId'] as num?)?.toInt(),
   branchName: json['branchName'] as String?,
+  teacherId: (json['teacherId'] as num?)?.toInt(),
 );
 
 Map<String, dynamic> _$UserModelToJson(UserModel instance) => <String, dynamic>{
@@ -22,4 +23,5 @@ Map<String, dynamic> _$UserModelToJson(UserModel instance) => <String, dynamic>{
   'accessToken': instance.accessToken,
   'branchId': instance.branchId,
   'branchName': instance.branchName,
+  'teacherId': instance.teacherId,
 };

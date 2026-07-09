@@ -10,6 +10,8 @@ abstract class GroupRepository {
   Future<(List<GroupModel>?, Failure?)> getAll();
   Future<(List<GroupModel>?, Failure?)> getAllSortedByTeacher({int? year, int? month});
   Future<(List<GroupModel>?, Failure?)> getByTeacherId(int teacherId);
+  /// Groups assigned to the logged-in teacher (server-scoped via JWT).
+  Future<(List<GroupModel>?, Failure?)> getMine();
   Future<(GroupModel?, Failure?)> getById(int id);
   Future<(GroupModel?, Failure?)> create(GroupRequest request);
   Future<(GroupModel?, Failure?)> update(int id, GroupRequest request);
@@ -102,6 +104,24 @@ class GroupRepositoryImpl implements GroupRepository {
     final cached = _localDataSource.getByTeacherId(teacherId);
     if (cached.isNotEmpty) return (cached, null);
     return (null, const CacheFailure('No cached groups available'));
+  }
+
+  @override
+  Future<(List<GroupModel>?, Failure?)> getMine() async {
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('Internet aloqasi yo\'q'));
+    }
+    try {
+      final groups = await _remoteDataSource.getMine();
+      for (final g in groups) {
+        await _localDataSource.cacheSingle(g);
+      }
+      return (groups, null);
+    } on DioException catch (e) {
+      return (null, ServerFailure(e.message ?? 'Guruhlarni yuklashda xatolik'));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override

@@ -18,6 +18,7 @@ abstract class TokenStorage {
     required String role,
     int? branchId,
     String? branchName,
+    int? teacherId,
   });
   Future<Map<String, dynamic>?> getUserData();
   Future<void> deleteUserData();
@@ -41,6 +42,7 @@ class TokenStorageImpl implements TokenStorage {
   static const _roleKey = 'user_role';
   static const _branchIdKey = 'user_branch_id';
   static const _branchNameKey = 'user_branch_name';
+  static const _teacherIdKey = 'user_teacher_id';
   static const _activeBranchFilterIdKey = 'active_branch_filter_id';
   static const _activeBranchFilterNameKey = 'active_branch_filter_name';
 
@@ -124,6 +126,7 @@ class TokenStorageImpl implements TokenStorage {
     required String role,
     int? branchId,
     String? branchName,
+    int? teacherId,
   }) async {
     await _prefs.setInt(_adminIdKey, adminId);
     await _prefs.setString(_usernameKey, username);
@@ -137,6 +140,11 @@ class TokenStorageImpl implements TokenStorage {
       await _prefs.setString(_branchNameKey, branchName);
     } else {
       await _prefs.remove(_branchNameKey);
+    }
+    if (teacherId != null) {
+      await _prefs.setInt(_teacherIdKey, teacherId);
+    } else {
+      await _prefs.remove(_teacherIdKey);
     }
   }
 
@@ -152,6 +160,7 @@ class TokenStorageImpl implements TokenStorage {
       'adminId': adminId,
       'branchId': _prefs.getInt(_branchIdKey),
       'branchName': _prefs.getString(_branchNameKey),
+      'teacherId': _prefs.getInt(_teacherIdKey),
     };
   }
 
@@ -167,6 +176,7 @@ class TokenStorageImpl implements TokenStorage {
       'adminId': adminId,
       'branchId': _prefs.getInt(_branchIdKey),
       'branchName': _prefs.getString(_branchNameKey),
+      'teacherId': _prefs.getInt(_teacherIdKey),
     };
   }
 
@@ -177,6 +187,7 @@ class TokenStorageImpl implements TokenStorage {
     await _prefs.remove(_adminIdKey);
     await _prefs.remove(_branchIdKey);
     await _prefs.remove(_branchNameKey);
+    await _prefs.remove(_teacherIdKey);
   }
 
   // ── Active branch filter (super admin branch switching) ───────────────────

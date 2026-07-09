@@ -17,26 +17,37 @@ class TeacherLoadAll extends TeacherEvent {}
 class TeacherCreate extends TeacherEvent {
   final String fullName;
   final String phoneNumber;
+  final String? username;
+  final String? password;
 
-  const TeacherCreate({required this.fullName, required this.phoneNumber});
+  const TeacherCreate({
+    required this.fullName,
+    required this.phoneNumber,
+    this.username,
+    this.password,
+  });
 
   @override
-  List<Object?> get props => [fullName, phoneNumber];
+  List<Object?> get props => [fullName, phoneNumber, username, password];
 }
 
 class TeacherUpdate extends TeacherEvent {
   final int id;
   final String fullName;
   final String phoneNumber;
+  final String? username;
+  final String? password;
 
   const TeacherUpdate({
     required this.id,
     required this.fullName,
     required this.phoneNumber,
+    this.username,
+    this.password,
   });
 
   @override
-  List<Object?> get props => [id, fullName, phoneNumber];
+  List<Object?> get props => [id, fullName, phoneNumber, username, password];
 }
 
 class TeacherDelete extends TeacherEvent {
@@ -119,7 +130,12 @@ class TeacherBloc extends Bloc<TeacherEvent, TeacherState> {
   ) async {
     emit(TeacherLoading());
     final (teacher, failure) = await _repository.create(
-      TeacherRequest(fullName: event.fullName, phoneNumber: event.phoneNumber),
+      TeacherRequest(
+        fullName: event.fullName,
+        phoneNumber: event.phoneNumber,
+        username: event.username,
+        password: event.password,
+      ),
     );
     if (failure != null) {
       emit(TeacherError(failure.message));
@@ -138,7 +154,12 @@ class TeacherBloc extends Bloc<TeacherEvent, TeacherState> {
     emit(TeacherLoading());
     final (teacher, failure) = await _repository.update(
       event.id,
-      TeacherRequest(fullName: event.fullName, phoneNumber: event.phoneNumber),
+      TeacherRequest(
+        fullName: event.fullName,
+        phoneNumber: event.phoneNumber,
+        username: event.username,
+        password: event.password,
+      ),
     );
     if (failure != null) {
       emit(TeacherError(failure.message));

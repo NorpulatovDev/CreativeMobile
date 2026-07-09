@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../services/sms_service.dart';
+import '../services/sms_queue_processor.dart';
 
 import 'package:creative/features/inquiries/data/models/inquiry_group_model.dart';
 import 'package:creative/features/inquiries/presentation/pages/inquiries_page.dart';
@@ -12,6 +13,8 @@ import 'package:creative/features/inquiries/presentation/pages/inquiry_group_det
 
 import '../../features/admins/presentation/pages/admins_page.dart';
 import '../../features/attendance/presentation/pages/attendance_page.dart';
+import '../../features/attendance_submission/presentation/pages/pending_approvals_page.dart';
+import '../../features/sms/presentation/pages/failed_sms_page.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/branches/data/models/branch_model.dart';
@@ -138,6 +141,16 @@ class AppRouter {
                 name: 'admins',
                 builder: (context, state) => const AdminsPage(),
               ),
+              GoRoute(
+                path: Routes.approvals,
+                name: 'approvals',
+                builder: (context, state) => const PendingApprovalsPage(),
+              ),
+              GoRoute(
+                path: Routes.failedSms,
+                name: 'failed-sms',
+                builder: (context, state) => const FailedSmsPage(),
+              ),
             ],
           ),
           // Branch 1 — Groups
@@ -207,6 +220,12 @@ class AppRouter {
       return loc == Routes.login ? null : Routes.login;
     }
 
+    // Teachers use the Telegram Mini App, not this admin app. They can't sign in
+    // here (their accounts are passwordless), but guard against it defensively.
+    if (authState.user.isTeacher) {
+      return loc == Routes.login ? null : Routes.login;
+    }
+
     if (authState.user.isSuperAdmin) {
       final branchState = _branchCubit.state;
       if (branchState.isInitialized && branchState.selectedBranchId == null) {
@@ -215,7 +234,9 @@ class AppRouter {
       if (loc == Routes.selectBranch) return Routes.home;
     }
 
-    if (loc == Routes.login || loc == Routes.splash || loc == Routes.selectBranch) {
+    if (loc == Routes.login ||
+        loc == Routes.splash ||
+        loc == Routes.selectBranch) {
       return Routes.home;
     }
 
@@ -372,7 +393,32 @@ class MainScaffold extends StatefulWidget {
   State<MainScaffold> createState() => _MainScaffoldState();
 }
 
-class _MainScaffoldState extends State<MainScaffold> {
+class _MainScaffoldState extends State<MainScaffold> with WidgetsBindingObserver {
+  final SmsQueueProcessor _smsProcessor = getIt<SmsQueueProcessor>();
+
+  @override
+  void initState() {
+    super.initState();
+    // The admin shell is only shown to admins (teachers are routed elsewhere),
+    // so this drives centralized SMS sending from the admin device.
+    WidgetsBinding.instance.addObserver(this);
+    _smsProcessor.start();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _smsProcessor.processQueue();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _smsProcessor.stop();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AuthBloc, AuthState>(
@@ -1234,6 +1280,8 @@ class _PageGrid extends StatelessWidget {
       _PageData(icon: Icons.school_rounded,         label: "O'quvchilar",       color: AppColors.success,       route: Routes.students, pushRoute: false),
       _PageData(icon: Icons.person_add_rounded,     label: "O'quvchi qo'shish", color: AppColors.success,       onTap: _showAddStudent),
       _PageData(icon: Icons.analytics_rounded,      label: "Hisobotlar",        color: const Color(0xFF06B6D4), route: Routes.reports),
+      _PageData(icon: Icons.fact_check_rounded,     label: "Tasdiqlash",        color: AppColors.warning,       route: Routes.approvals),
+      _PageData(icon: Icons.sms_failed_rounded,     label: "Yuborilmagan SMS",  color: AppColors.error,         route: Routes.failedSms),
       _PageData(icon: Icons.person_rounded,         label: "O'qituvchilar",     color: AppColors.warning,       route: Routes.teachers),
       _PageData(icon: Icons.add_card_rounded,       label: "To'lov qo'shish",   color: const Color(0xFF8B5CF6), onTap: _showQuickPayment),
     ];

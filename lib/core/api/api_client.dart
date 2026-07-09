@@ -148,6 +148,7 @@ class AuthInterceptor extends Interceptor {
                 role: data['role'] as String,
                 branchId: (data['branchId'] as num?)?.toInt(),
                 branchName: data['branchName'] as String?,
+                teacherId: (data['teacherId'] as num?)?.toInt(),
               );
             }
 

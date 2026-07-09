@@ -229,6 +229,8 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _phoneController;
+  late final TextEditingController _usernameController;
+  late final TextEditingController _passwordController;
 
   bool get isEditing => widget.teacher != null;
 
@@ -237,12 +239,16 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
     super.initState();
     _nameController = TextEditingController(text: widget.teacher?.fullName);
     _phoneController = TextEditingController(text: widget.teacher?.phoneNumber);
+    _usernameController = TextEditingController(text: widget.teacher?.username);
+    _passwordController = TextEditingController();
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -252,7 +258,8 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
       title: Text(isEditing ? 'Edit Teacher' : 'Add Teacher'),
       content: Form(
         key: _formKey,
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextFormField(
@@ -287,7 +294,40 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
                 return null;
               },
             ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _usernameController,
+              decoration: const InputDecoration(
+                labelText: 'Login (ixtiyoriy)',
+                prefixIcon: Icon(Icons.account_circle_outlined),
+                helperText: "Davomat olishi uchun o'qituvchi logini",
+              ),
+              autocorrect: false,
+              enableSuggestions: false,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _passwordController,
+              decoration: InputDecoration(
+                labelText: isEditing ? 'Yangi parol' : 'Parol',
+                prefixIcon: const Icon(Icons.lock_outline),
+                helperText: isEditing
+                    ? "Bo'sh qoldirilsa, parol o'zgarmaydi"
+                    : null,
+              ),
+              obscureText: true,
+              validator: (value) {
+                // Password is required only when creating a new login account.
+                final username = _usernameController.text.trim();
+                if (!isEditing && username.isNotEmpty &&
+                    (value == null || value.isEmpty)) {
+                  return 'Login uchun parol kiriting';
+                }
+                return null;
+              },
+            ),
           ],
+          ),
         ),
       ),
       actions: [
@@ -306,16 +346,24 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
   void _submit() {
     if (_formKey.currentState?.validate() ?? false) {
       final bloc = context.read<TeacherBloc>();
+      final username = _usernameController.text.trim();
+      final password = _passwordController.text;
+      final usernameArg = username.isEmpty ? null : username;
+      final passwordArg = password.isEmpty ? null : password;
       if (isEditing) {
         bloc.add(TeacherUpdate(
           id: widget.teacher!.id,
           fullName: _nameController.text.trim(),
           phoneNumber: _phoneController.text.trim(),
+          username: usernameArg,
+          password: passwordArg,
         ));
       } else {
         bloc.add(TeacherCreate(
           fullName: _nameController.text.trim(),
           phoneNumber: _phoneController.text.trim(),
+          username: usernameArg,
+          password: passwordArg,
         ));
       }
       Navigator.pop(context);

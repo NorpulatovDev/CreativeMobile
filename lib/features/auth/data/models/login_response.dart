@@ -13,6 +13,7 @@ class LoginResponse {
   final String role;
   final int? branchId;
   final String? branchName;
+  final int? teacherId;
 
   const LoginResponse({
     required this.accessToken,
@@ -24,6 +25,7 @@ class LoginResponse {
     required this.role,
     this.branchId,
     this.branchName,
+    this.teacherId,
   });
 
   factory LoginResponse.fromJson(Map<String, dynamic> json) =>

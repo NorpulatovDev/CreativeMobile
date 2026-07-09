@@ -7,13 +7,13 @@ part of 'branch_model.dart';
 // **************************************************************************
 
 BranchModel _$BranchModelFromJson(Map<String, dynamic> json) => BranchModel(
-      id: (json['id'] as num).toInt(),
-      name: json['name'] as String,
-      address: json['address'] as String?,
-      phoneNumber: json['phoneNumber'] as String?,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
-    );
+  id: (json['id'] as num).toInt(),
+  name: json['name'] as String,
+  address: json['address'] as String?,
+  phoneNumber: json['phoneNumber'] as String?,
+  createdAt: DateTime.parse(json['createdAt'] as String),
+  updatedAt: DateTime.parse(json['updatedAt'] as String),
+);
 
 Map<String, dynamic> _$BranchModelToJson(BranchModel instance) =>
     <String, dynamic>{

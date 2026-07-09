@@ -11,6 +11,7 @@ class UserModel extends Equatable {
   final String accessToken;
   final int? branchId;
   final String? branchName;
+  final int? teacherId;
 
   const UserModel({
     required this.adminId,
@@ -19,6 +20,7 @@ class UserModel extends Equatable {
     required this.accessToken,
     this.branchId,
     this.branchName,
+    this.teacherId,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) =>
@@ -27,7 +29,9 @@ class UserModel extends Equatable {
   Map<String, dynamic> toJson() => _$UserModelToJson(this);
 
   bool get isSuperAdmin => role == 'SUPER_ADMIN';
+  bool get isTeacher => role == 'TEACHER';
 
   @override
-  List<Object?> get props => [adminId, username, role, accessToken, branchId, branchName];
+  List<Object?> get props =>
+      [adminId, username, role, accessToken, branchId, branchName, teacherId];
 }
