@@ -33,7 +33,7 @@ class _Body extends StatelessWidget {
         foregroundColor: AppColors.neutral900,
         elevation: 0,
         scrolledUnderElevation: 0,
-        title: const Text('Yuborilmagan SMS',
+        title: const Text('SMS',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
         actions: [
           BlocBuilder<FailedSmsCubit, FailedSmsState>(
@@ -86,40 +86,86 @@ class _Body extends StatelessWidget {
           }
           if (state is! FailedSmsLoaded) return const SizedBox.shrink();
 
-          if (state.messages.isEmpty) {
-            return RefreshIndicator(
-              onRefresh: () => context.read<FailedSmsCubit>().load(),
-              child: ListView(
-                children: [
-                  const SizedBox(height: 140),
+          final cubit = context.read<FailedSmsCubit>();
+          return RefreshIndicator(
+            onRefresh: () => cubit.load(),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              children: [
+                if (state.pendingCount > 0)
+                  _PendingBanner(
+                    count: state.pendingCount,
+                    sending: state.sendingPending,
+                    onSend: () => cubit.sendPending(),
+                  ),
+                if (state.messages.isEmpty && state.pendingCount == 0) ...[
+                  const SizedBox(height: 120),
                   Icon(Icons.mark_email_read_rounded,
                       size: 56, color: AppColors.neutral300),
                   const SizedBox(height: 12),
-                  Center(
-                    child: Text('Yuborilmagan SMS yo\'q',
+                  const Center(
+                    child: Text('SMS yo\'q',
                         style: TextStyle(color: AppColors.neutral500)),
                   ),
                 ],
-              ),
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: () => context.read<FailedSmsCubit>().load(),
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-              itemCount: state.messages.length,
-              itemBuilder: (context, i) {
-                final m = state.messages[i];
-                return _FailedCard(
-                  message: m,
-                  retrying: state.retryingIds.contains(m.id),
-                  onRetry: () => context.read<FailedSmsCubit>().retry(m.id),
-                );
-              },
+                for (final m in state.messages)
+                  _FailedCard(
+                    message: m,
+                    retrying: state.retryingIds.contains(m.id),
+                    onRetry: () => cubit.retry(m.id),
+                  ),
+              ],
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Fallback control: today's queued SMS that haven't been sent yet (e.g. approved
+/// while the app was closed/offline). Lets the admin push them out from the SIM.
+class _PendingBanner extends StatelessWidget {
+  final int count;
+  final bool sending;
+  final VoidCallback onSend;
+
+  const _PendingBanner({
+    required this.count,
+    required this.sending,
+    required this.onSend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.outgoing_mail, color: AppColors.primary, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('$count ta SMS yuborilishi kutilmoqda',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, color: AppColors.neutral900)),
+          ),
+          FilledButton(
+            onPressed: sending ? null : onSend,
+            child: sending
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Yuborish'),
+          ),
+        ],
       ),
     );
   }
@@ -188,7 +234,7 @@ class _FailedCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    stuck ? 'OSILIB QOLGAN' : '${message.attempts}/3 urinish',
+                    stuck ? 'OSILIB QOLGAN' : 'YUBORILMADI',
                     style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,

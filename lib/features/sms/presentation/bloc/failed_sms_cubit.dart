@@ -23,28 +23,37 @@ class FailedSmsError extends FailedSmsState {
 
 class FailedSmsLoaded extends FailedSmsState {
   final List<SmsMessageModel> messages;
+  final int pendingCount; // today's queued (not-yet-sent) messages
+  final bool sendingPending;
   final Set<int> retryingIds;
   final String? actionError;
 
   const FailedSmsLoaded(
     this.messages, {
+    this.pendingCount = 0,
+    this.sendingPending = false,
     this.retryingIds = const {},
     this.actionError,
   });
 
   FailedSmsLoaded copyWith({
     List<SmsMessageModel>? messages,
+    int? pendingCount,
+    bool? sendingPending,
     Set<int>? retryingIds,
     String? actionError,
   }) =>
       FailedSmsLoaded(
         messages ?? this.messages,
+        pendingCount: pendingCount ?? this.pendingCount,
+        sendingPending: sendingPending ?? this.sendingPending,
         retryingIds: retryingIds ?? this.retryingIds,
         actionError: actionError,
       );
 
   @override
-  List<Object?> get props => [messages, [...retryingIds]..sort(), actionError];
+  List<Object?> get props =>
+      [messages, pendingCount, sendingPending, [...retryingIds]..sort(), actionError];
 }
 
 class FailedSmsCubit extends Cubit<FailedSmsState> {
@@ -58,9 +67,27 @@ class FailedSmsCubit extends Cubit<FailedSmsState> {
     if (isClosed) return;
     if (failure != null) {
       emit(FailedSmsError(failure.message));
-    } else {
-      emit(FailedSmsLoaded(messages ?? []));
+      return;
     }
+    // Also count today's still-pending messages (fallback "send now" surface).
+    final (pending, _) = await _repo.getPending();
+    if (isClosed) return;
+    emit(FailedSmsLoaded(messages ?? [], pendingCount: pending?.length ?? 0));
+  }
+
+  /// Send today's pending (not-yet-sent) SMS from the SIM, then reload. Covers the
+  /// case where auto-send didn't run (app was closed/offline at approval time).
+  Future<void> sendPending() async {
+    final current = state;
+    if (current is! FailedSmsLoaded ||
+        current.pendingCount == 0 ||
+        current.sendingPending) {
+      return;
+    }
+    emit(current.copyWith(sendingPending: true, actionError: null));
+    await getIt<SmsQueueProcessor>().processQueue();
+    if (isClosed) return;
+    await load();
   }
 
   Future<void> retry(int id) async {
