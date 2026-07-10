@@ -15,5 +15,5 @@ abstract class Routes {
   static const selectBranch = '/select-branch';
   static const approvals = '/approvals';
   static const failedSms = '/failed-sms';
-  static const smsLog = '/sms-log';
+  static const pendingSms = '/pending-sms';
 }

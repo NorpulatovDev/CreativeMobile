@@ -1,11 +1,10 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
 import '../api/api_client.dart';
 import '../network/connectivity_service.dart';
-import '../../features/sms/data/datasources/sms_log_local_datasource.dart';
-import '../../features/sms/data/models/sms_log_model.dart';
 import 'sms_service.dart';
 
 enum SmsSendPhase { idle, sending, completed }
@@ -55,7 +54,7 @@ class SmsQueueProcessor {
   final ApiClient _api;
   final SmsService _sms;
   final ConnectivityService _connectivity;
-  final SmsLogLocalDataSource _log;
+  final _random = Random();
 
   Timer? _timer;
   Timer? _resetTimer;
@@ -70,11 +69,12 @@ class SmsQueueProcessor {
 
   static const _pollInterval = Duration(minutes: 1);
 
-  /// Delay between consecutive sends so a burst doesn't trip carrier
-  /// rate-limiting / spam filtering on the admin's SIM.
-  static const _sendInterval = Duration(seconds: 3);
+  /// Randomized delay (3–5s) between consecutive sends so a burst doesn't trip
+  /// carrier rate-limiting / spam filtering on the admin's SIM.
+  Duration get _sendInterval =>
+      Duration(milliseconds: 3000 + _random.nextInt(2001)); // 3000–5000ms
 
-  SmsQueueProcessor(this._api, this._sms, this._connectivity, this._log);
+  SmsQueueProcessor(this._api, this._sms, this._connectivity);
 
   /// Begin periodic processing (idempotent). Call when an admin session starts.
   void start() {
@@ -121,7 +121,6 @@ class SmsQueueProcessor {
         final id = (map['id'] as num).toInt();
         final phone = map['recipientPhone'] as String;
         final body = map['body'] as String;
-        final name = map['studentName'] as String? ?? '';
 
         final result = await _sms.send(phone, body);
         final sent = result == SmsResult.sent;
@@ -129,21 +128,6 @@ class SmsQueueProcessor {
           sentCount++;
         } else {
           failedCount++;
-        }
-
-        // Record the attempt in the device-local log (best-effort).
-        try {
-          await _log.add(SmsLogModel(
-            messageId: id,
-            studentName: name,
-            recipientPhone: phone,
-            body: body,
-            sent: sent,
-            error: sent ? null : result.name,
-            timestamp: DateTime.now(),
-          ));
-        } catch (e) {
-          if (kDebugMode) debugPrint('SMS log write failed for $id: $e');
         }
 
         try {

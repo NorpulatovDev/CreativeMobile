@@ -2,6 +2,7 @@ import '../../../../core/api/api_client.dart';
 import '../models/sms_message_model.dart';
 
 abstract class SmsRemoteDataSource {
+  Future<List<SmsMessageModel>> getPending();
   Future<List<SmsMessageModel>> getFailed();
   Future<void> retry(int id);
   Future<int> retryAll();
@@ -11,6 +12,14 @@ class SmsRemoteDataSourceImpl implements SmsRemoteDataSource {
   final ApiClient _apiClient;
 
   SmsRemoteDataSourceImpl(this._apiClient);
+
+  @override
+  Future<List<SmsMessageModel>> getPending() async {
+    final response = await _apiClient.get<List<dynamic>>('/api/sms/pending');
+    return (response.data ?? [])
+        .map((j) => SmsMessageModel.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
 
   @override
   Future<List<SmsMessageModel>> getFailed() async {
