@@ -15,6 +15,7 @@ import '../../features/admins/presentation/pages/admins_page.dart';
 import '../../features/attendance/presentation/pages/attendance_page.dart';
 import '../../features/attendance_submission/presentation/pages/pending_approvals_page.dart';
 import '../../features/sms/presentation/pages/failed_sms_page.dart';
+import '../../features/sms/presentation/pages/sms_log_page.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/branches/data/models/branch_model.dart';
@@ -150,6 +151,11 @@ class AppRouter {
                 path: Routes.failedSms,
                 name: 'failed-sms',
                 builder: (context, state) => const FailedSmsPage(),
+              ),
+              GoRoute(
+                path: Routes.smsLog,
+                name: 'sms-log',
+                builder: (context, state) => const SmsLogPage(),
               ),
             ],
           ),
@@ -1282,6 +1288,7 @@ class _PageGrid extends StatelessWidget {
       _PageData(icon: Icons.analytics_rounded,      label: "Hisobotlar",        color: const Color(0xFF06B6D4), route: Routes.reports),
       _PageData(icon: Icons.fact_check_rounded,     label: "Tasdiqlash",        color: AppColors.warning,       route: Routes.approvals),
       _PageData(icon: Icons.sms_failed_rounded,     label: "Yuborilmagan SMS",  color: AppColors.error,         route: Routes.failedSms),
+      _PageData(icon: Icons.history_rounded,        label: "SMS jurnali",       color: const Color(0xFF6366F1), route: Routes.smsLog),
       _PageData(icon: Icons.person_rounded,         label: "O'qituvchilar",     color: AppColors.warning,       route: Routes.teachers),
       _PageData(icon: Icons.add_card_rounded,       label: "To'lov qo'shish",   color: const Color(0xFF8B5CF6), onTap: _showQuickPayment),
     ];
