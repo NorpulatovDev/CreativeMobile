@@ -136,7 +136,28 @@ class _TeacherCard extends StatelessWidget {
           ),
         ),
         title: Text(teacher.fullName),
-        subtitle: Text(teacher.phoneNumber),
+        subtitle: Row(
+          children: [
+            Text(teacher.phoneNumber),
+            const SizedBox(width: 8),
+            Icon(
+              teacher.hasLogin ? Icons.lock_open : Icons.lock_outline,
+              size: 14,
+              color: teacher.hasLogin
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).disabledColor,
+            ),
+            const SizedBox(width: 2),
+            Text(
+              teacher.hasLogin ? 'Login bor' : 'Login yo\'q',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: teacher.hasLogin
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).disabledColor,
+                  ),
+            ),
+          ],
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -229,7 +250,6 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _phoneController;
-  late final TextEditingController _usernameController;
   late final TextEditingController _passwordController;
 
   bool get isEditing => widget.teacher != null;
@@ -239,7 +259,6 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
     super.initState();
     _nameController = TextEditingController(text: widget.teacher?.fullName);
     _phoneController = TextEditingController(text: widget.teacher?.phoneNumber);
-    _usernameController = TextEditingController(text: widget.teacher?.username);
     _passwordController = TextEditingController();
   }
 
@@ -247,7 +266,6 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
-    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -296,35 +314,21 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
             ),
             const SizedBox(height: 16),
             TextFormField(
-              controller: _usernameController,
-              decoration: const InputDecoration(
-                labelText: 'Login (ixtiyoriy)',
-                prefixIcon: Icon(Icons.account_circle_outlined),
-                helperText: "Davomat olishi uchun o'qituvchi logini",
-              ),
-              autocorrect: false,
-              enableSuggestions: false,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
               controller: _passwordController,
               decoration: InputDecoration(
-                labelText: isEditing ? 'Yangi parol' : 'Parol',
+                labelText: isEditing
+                    ? (widget.teacher?.hasLogin ?? false
+                        ? 'Yangi parol'
+                        : 'Parol')
+                    : 'Parol',
                 prefixIcon: const Icon(Icons.lock_outline),
-                helperText: isEditing
-                    ? "Bo'sh qoldirilsa, parol o'zgarmaydi"
-                    : null,
+                // The login username IS the phone number; setting a password
+                // enables (or resets) the teacher's login. Blank keeps it as-is.
+                helperText: isEditing && (widget.teacher?.hasLogin ?? false)
+                    ? "Bo'sh qoldirilsa, parol o'zgarmaydi. Login: telefon raqami"
+                    : "Parol kiriting — o'qituvchi telefon raqami bilan kiradi",
               ),
               obscureText: true,
-              validator: (value) {
-                // Password is required only when creating a new login account.
-                final username = _usernameController.text.trim();
-                if (!isEditing && username.isNotEmpty &&
-                    (value == null || value.isEmpty)) {
-                  return 'Login uchun parol kiriting';
-                }
-                return null;
-              },
             ),
           ],
           ),
@@ -346,23 +350,23 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
   void _submit() {
     if (_formKey.currentState?.validate() ?? false) {
       final bloc = context.read<TeacherBloc>();
-      final username = _usernameController.text.trim();
       final password = _passwordController.text;
-      final usernameArg = username.isEmpty ? null : username;
       final passwordArg = password.isEmpty ? null : password;
+      // Username is always the phone number: leave it null so the backend
+      // defaults the login username to the teacher's phone number.
       if (isEditing) {
         bloc.add(TeacherUpdate(
           id: widget.teacher!.id,
           fullName: _nameController.text.trim(),
           phoneNumber: _phoneController.text.trim(),
-          username: usernameArg,
+          username: null,
           password: passwordArg,
         ));
       } else {
         bloc.add(TeacherCreate(
           fullName: _nameController.text.trim(),
           phoneNumber: _phoneController.text.trim(),
-          username: usernameArg,
+          username: null,
           password: passwordArg,
         ));
       }
