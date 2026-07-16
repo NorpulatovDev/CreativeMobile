@@ -220,8 +220,8 @@ class AppRouter {
       return loc == Routes.login ? null : Routes.login;
     }
 
-    // Teachers use the Telegram Mini App, not this admin app. They can't sign in
-    // here (their accounts are passwordless), but guard against it defensively.
+    // Teachers use the separate teacher web app, not this admin app. Block a
+    // TEACHER account from using the admin UI even if it authenticates.
     if (authState.user.isTeacher) {
       return loc == Routes.login ? null : Routes.login;
     }
