@@ -76,6 +76,7 @@ import '../../features/attendance_submission/data/datasources/attendance_submiss
 import '../../features/attendance_submission/data/repositories/attendance_submission_repository.dart';
 
 // SMS (failed/stuck message visibility + manual retry)
+import '../../features/sms/data/datasources/sms_log_local_datasource.dart';
 import '../../features/sms/data/datasources/sms_remote_datasource.dart';
 import '../../features/sms/data/repositories/sms_repository.dart';
 
@@ -290,9 +291,14 @@ Future<void> configureDependencies() async {
   // SMS
   getIt.registerSingleton<SmsService>(SmsService());
 
+  // Device-local SMS history (Hive), written by the queue processor + resends.
+  final smsLogLocal = SmsLogLocalDataSource();
+  await smsLogLocal.initialize();
+  getIt.registerSingleton<SmsLogLocalDataSource>(smsLogLocal);
+
   // Centralized SMS sending from the Admin device (foreground queue processor)
   getIt.registerSingleton<SmsQueueProcessor>(
-    SmsQueueProcessor(getIt(), getIt(), getIt()),
+    SmsQueueProcessor(getIt(), getIt(), getIt(), getIt()),
   );
 
   // Branches Feature (super admin only, no offline)

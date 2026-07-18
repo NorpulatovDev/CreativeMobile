@@ -3,6 +3,8 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../../features/sms/data/datasources/sms_log_local_datasource.dart';
+import '../../features/sms/data/models/sms_log_model.dart';
 import '../api/api_client.dart';
 import '../network/connectivity_service.dart';
 import 'sms_service.dart';
@@ -54,6 +56,7 @@ class SmsQueueProcessor {
   final ApiClient _api;
   final SmsService _sms;
   final ConnectivityService _connectivity;
+  final SmsLogLocalDataSource _log;
   final _random = Random();
 
   Timer? _timer;
@@ -74,7 +77,7 @@ class SmsQueueProcessor {
   Duration get _sendInterval =>
       Duration(milliseconds: 3000 + _random.nextInt(2001)); // 3000–5000ms
 
-  SmsQueueProcessor(this._api, this._sms, this._connectivity);
+  SmsQueueProcessor(this._api, this._sms, this._connectivity, this._log);
 
   /// Begin periodic processing (idempotent). Call when an admin session starts.
   void start() {
@@ -121,6 +124,7 @@ class SmsQueueProcessor {
         final id = (map['id'] as num).toInt();
         final phone = map['recipientPhone'] as String;
         final body = map['body'] as String;
+        final name = map['studentName'] as String? ?? '';
 
         final result = await _sms.send(phone, body);
         final sent = result == SmsResult.sent;
@@ -128,6 +132,21 @@ class SmsQueueProcessor {
           sentCount++;
         } else {
           failedCount++;
+        }
+
+        // Record the final outcome in the device-local history (best-effort).
+        try {
+          await _log.add(SmsLogModel(
+            messageId: id,
+            studentName: name,
+            recipientPhone: phone,
+            body: body,
+            sent: sent,
+            error: sent ? null : result.name,
+            timestamp: DateTime.now(),
+          ));
+        } catch (e) {
+          if (kDebugMode) debugPrint('SMS log write failed for $id: $e');
         }
 
         try {
