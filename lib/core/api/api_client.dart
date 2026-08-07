@@ -26,10 +26,10 @@ class ApiClient {
   static Dio _buildDio() => Dio(BaseOptions(
         baseUrl: const String.fromEnvironment(
           'API_URL',
-          // prod: https://nr-ogabek.uz/
+          // prod: https://api.creativelc.uz/
           // Android emulator: http://10.0.2.2:8080
           // iOS simulator:    http://localhost:8080
-          defaultValue: 'https://nr-ogabek.uz/',
+          defaultValue: 'https://api.creativelc.uz/',
         ),
         connectTimeout: const Duration(seconds: 30),
         receiveTimeout: const Duration(seconds: 30),
