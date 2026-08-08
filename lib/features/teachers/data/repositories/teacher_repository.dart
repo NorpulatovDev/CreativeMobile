@@ -87,6 +87,9 @@ class TeacherRepositoryImpl implements TeacherRepository {
       final message = e.response?.data?['message'] as String? ??
           e.message ??
           'O\'qituvchi qo\'shishda xatolik yuz berdi';
+      if (_needsSamePersonConfirmation(e)) {
+        return (null, SamePersonConfirmationFailure(message));
+      }
       return (null, ServerFailure(message));
     } catch (e) {
       return (null, UnknownFailure(e.toString()));
@@ -107,10 +110,23 @@ class TeacherRepositoryImpl implements TeacherRepository {
       final message = e.response?.data?['message'] as String? ??
           e.message ??
           'O\'qituvchini yangilashda xatolik yuz berdi';
+      if (_needsSamePersonConfirmation(e)) {
+        return (null, SamePersonConfirmationFailure(message));
+      }
       return (null, ServerFailure(message));
     } catch (e) {
       return (null, UnknownFailure(e.toString()));
     }
+  }
+
+  /// The backend refuses to merge two teacher records onto one phone number until
+  /// the admin confirms they are the same person. Matched on the `code` rather
+  /// than the status alone, since 409 also covers plain uniqueness conflicts.
+  bool _needsSamePersonConfirmation(DioException e) {
+    if (e.response?.statusCode != 409) return false;
+    final data = e.response?.data;
+    return data is Map &&
+        data['code'] == SamePersonConfirmationFailure.code;
   }
 
   @override

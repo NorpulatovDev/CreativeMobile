@@ -40,11 +40,22 @@ class TeacherRequest {
   final String? username;
   final String? password;
 
+  /// Acknowledges that this phone number already belongs to an existing teacher
+  /// and that they are the same person — one human teaching in several branches,
+  /// sharing a single login and seeing all of their groups.
+  ///
+  /// The phone number IS the teacher's identity on the backend, so reusing one
+  /// merges the two records. Sent only after the admin confirms it; otherwise the
+  /// backend refuses with 409 / TEACHER_SAME_PERSON_CONFIRMATION_REQUIRED.
+  @JsonKey(includeIfNull: false)
+  final bool? confirmSamePerson;
+
   const TeacherRequest({
     required this.fullName,
     required this.phoneNumber,
     this.username,
     this.password,
+    this.confirmSamePerson,
   });
 
   factory TeacherRequest.fromJson(Map<String, dynamic> json) =>

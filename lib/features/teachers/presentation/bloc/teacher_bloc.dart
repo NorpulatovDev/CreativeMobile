@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/error/failures.dart';
 import '../../data/models/teacher_model.dart';
 import '../../data/repositories/teacher_repository.dart';
 
@@ -20,15 +21,29 @@ class TeacherCreate extends TeacherEvent {
   final String? username;
   final String? password;
 
+  /// Set only when re-submitting after the admin confirmed that this phone
+  /// number's existing owner is the same person. See [TeacherSamePersonConfirmationRequired].
+  final bool confirmSamePerson;
+
   const TeacherCreate({
     required this.fullName,
     required this.phoneNumber,
     this.username,
     this.password,
+    this.confirmSamePerson = false,
   });
 
+  TeacherCreate confirmed() => TeacherCreate(
+        fullName: fullName,
+        phoneNumber: phoneNumber,
+        username: username,
+        password: password,
+        confirmSamePerson: true,
+      );
+
   @override
-  List<Object?> get props => [fullName, phoneNumber, username, password];
+  List<Object?> get props =>
+      [fullName, phoneNumber, username, password, confirmSamePerson];
 }
 
 class TeacherUpdate extends TeacherEvent {
@@ -38,16 +53,30 @@ class TeacherUpdate extends TeacherEvent {
   final String? username;
   final String? password;
 
+  /// See [TeacherCreate.confirmSamePerson].
+  final bool confirmSamePerson;
+
   const TeacherUpdate({
     required this.id,
     required this.fullName,
     required this.phoneNumber,
     this.username,
     this.password,
+    this.confirmSamePerson = false,
   });
 
+  TeacherUpdate confirmed() => TeacherUpdate(
+        id: id,
+        fullName: fullName,
+        phoneNumber: phoneNumber,
+        username: username,
+        password: password,
+        confirmSamePerson: true,
+      );
+
   @override
-  List<Object?> get props => [id, fullName, phoneNumber, username, password];
+  List<Object?> get props =>
+      [id, fullName, phoneNumber, username, password, confirmSamePerson];
 }
 
 class TeacherDelete extends TeacherEvent {
@@ -87,6 +116,23 @@ class TeacherError extends TeacherState {
 
   @override
   List<Object?> get props => [message];
+}
+
+/// The write was refused because the phone number already belongs to another
+/// teacher, which would merge the two into one person sharing a login. The page
+/// shows [message] as a confirm dialog and, if the admin agrees, dispatches
+/// [retryEvent] — the same write with the confirmation attached.
+class TeacherSamePersonConfirmationRequired extends TeacherState {
+  final String message;
+  final TeacherEvent retryEvent;
+
+  const TeacherSamePersonConfirmationRequired({
+    required this.message,
+    required this.retryEvent,
+  });
+
+  @override
+  List<Object?> get props => [message, retryEvent];
 }
 
 class TeacherActionSuccess extends TeacherState {
@@ -135,9 +181,16 @@ class TeacherBloc extends Bloc<TeacherEvent, TeacherState> {
         phoneNumber: event.phoneNumber,
         username: event.username,
         password: event.password,
+        confirmSamePerson: event.confirmSamePerson ? true : null,
       ),
     );
-    if (failure != null) {
+    if (failure is SamePersonConfirmationFailure) {
+      emit(TeacherSamePersonConfirmationRequired(
+        message: failure.message,
+        retryEvent: event.confirmed(),
+      ));
+      emit(TeacherLoaded(_teachers));
+    } else if (failure != null) {
       emit(TeacherError(failure.message));
       emit(TeacherLoaded(_teachers));
     } else {
@@ -159,9 +212,16 @@ class TeacherBloc extends Bloc<TeacherEvent, TeacherState> {
         phoneNumber: event.phoneNumber,
         username: event.username,
         password: event.password,
+        confirmSamePerson: event.confirmSamePerson ? true : null,
       ),
     );
-    if (failure != null) {
+    if (failure is SamePersonConfirmationFailure) {
+      emit(TeacherSamePersonConfirmationRequired(
+        message: failure.message,
+        retryEvent: event.confirmed(),
+      ));
+      emit(TeacherLoaded(_teachers));
+    } else if (failure != null) {
       emit(TeacherError(failure.message));
       emit(TeacherLoaded(_teachers));
     } else {

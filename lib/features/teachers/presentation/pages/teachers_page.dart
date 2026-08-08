@@ -34,9 +34,17 @@ class TeachersView extends StatelessWidget {
         title: const Text('Teachers'),
       ),
       body: BlocConsumer<TeacherBloc, TeacherState>(
-        listenWhen: (_, curr) => curr is TeacherError || curr is TeacherActionSuccess,
-        buildWhen: (_, curr) => curr is! TeacherActionSuccess,
+        listenWhen: (_, curr) =>
+            curr is TeacherError ||
+            curr is TeacherActionSuccess ||
+            curr is TeacherSamePersonConfirmationRequired,
+        buildWhen: (_, curr) =>
+            curr is! TeacherActionSuccess &&
+            curr is! TeacherSamePersonConfirmationRequired,
         listener: (context, state) {
+          if (state is TeacherSamePersonConfirmationRequired) {
+            _confirmSamePerson(context, state);
+          }
           if (state is TeacherError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -101,6 +109,39 @@ class TeachersView extends StatelessWidget {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showTeacherDialog(context),
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  /// The phone number entered already belongs to another teacher. On the backend
+  /// that number IS the teacher's identity, so going ahead makes them one person:
+  /// a single login, and each seeing the other's groups. Right for one teacher
+  /// working in several branches, wrong for two people sharing a phone — only the
+  /// admin knows which, so it is never assumed.
+  void _confirmSamePerson(
+    BuildContext context,
+    TeacherSamePersonConfirmationRequired state,
+  ) {
+    final bloc = context.read<TeacherBloc>();
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.people_outline),
+        title: const Text('Bir xil o\'qituvchimi?'),
+        content: Text(state.message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Bekor qilish'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              bloc.add(state.retryEvent);
+            },
+            child: const Text('Ha, bir xil odam'),
+          ),
+        ],
       ),
     );
   }

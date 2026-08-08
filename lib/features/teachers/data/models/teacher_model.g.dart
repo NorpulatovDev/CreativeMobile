@@ -35,12 +35,15 @@ TeacherRequest _$TeacherRequestFromJson(Map<String, dynamic> json) =>
       phoneNumber: json['phoneNumber'] as String,
       username: json['username'] as String?,
       password: json['password'] as String?,
+      confirmSamePerson: json['confirmSamePerson'] as bool?,
     );
 
-Map<String, dynamic> _$TeacherRequestToJson(TeacherRequest instance) =>
-    <String, dynamic>{
-      'fullName': instance.fullName,
-      'phoneNumber': instance.phoneNumber,
-      'username': instance.username,
-      'password': instance.password,
-    };
+Map<String, dynamic> _$TeacherRequestToJson(
+  TeacherRequest instance,
+) => <String, dynamic>{
+  'fullName': instance.fullName,
+  'phoneNumber': instance.phoneNumber,
+  'username': instance.username,
+  'password': instance.password,
+  if (instance.confirmSamePerson case final value?) 'confirmSamePerson': value,
+};
