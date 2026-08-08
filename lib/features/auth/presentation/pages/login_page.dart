@@ -418,7 +418,7 @@ class _LoginPageState extends State<LoginPage>
         ),
         const SizedBox(height: 4),
         Text(
-          'Boshqaruv tizimi v1.0',
+          'Boshqaruv tizimi v2.0',
           style: TextStyle(
             fontSize: 12,
             color: AppColors.neutral400.withOpacity(0.7),
