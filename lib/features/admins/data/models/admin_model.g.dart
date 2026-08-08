@@ -29,7 +29,7 @@ Map<String, dynamic> _$AdminModelToJson(AdminModel instance) =>
 
 AdminRequest _$AdminRequestFromJson(Map<String, dynamic> json) => AdminRequest(
   username: json['username'] as String,
-  password: json['password'] as String,
+  password: json['password'] as String?,
   role: json['role'] as String,
   branchId: (json['branchId'] as num?)?.toInt(),
 );
@@ -37,7 +37,7 @@ AdminRequest _$AdminRequestFromJson(Map<String, dynamic> json) => AdminRequest(
 Map<String, dynamic> _$AdminRequestToJson(AdminRequest instance) =>
     <String, dynamic>{
       'username': instance.username,
-      'password': instance.password,
+      if (instance.password case final value?) 'password': value,
       'role': instance.role,
       'branchId': instance.branchId,
     };

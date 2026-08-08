@@ -33,13 +33,17 @@ class AdminModel {
 @JsonSerializable()
 class AdminRequest {
   final String username;
-  final String password;
+
+  /// Omitted on update to mean "password unchanged". When present, the backend
+  /// revokes the admin's refresh tokens and they must log in again.
+  @JsonKey(includeIfNull: false)
+  final String? password;
   final String role;
   final int? branchId;
 
   const AdminRequest({
     required this.username,
-    required this.password,
+    this.password,
     required this.role,
     this.branchId,
   });

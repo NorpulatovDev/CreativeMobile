@@ -314,12 +314,21 @@ class _AdminFormDialogState extends State<AdminFormDialog> {
                 decoration: InputDecoration(
                   labelText: isEditing ? 'Yangi parol (6+ belgi)' : 'Parol',
                   prefixIcon: const Icon(Icons.lock_outline),
+                  // Changing it ends their sessions everywhere, so it must be a
+                  // deliberate act — not something you retype to save a role change.
+                  helperText: isEditing
+                      ? "Bo'sh qoldirilsa, parol o'zgarmaydi. "
+                          "O'zgartirilsa, admin qaytadan kirishi kerak bo'ladi."
+                      : null,
+                  helperMaxLines: 2,
                 ),
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty) {
-                    return 'Parol kiriting';
+                  final value = v?.trim() ?? '';
+                  // Blank means "leave it alone" when editing; only required on create.
+                  if (value.isEmpty) {
+                    return isEditing ? null : 'Parol kiriting';
                   }
-                  if (v.trim().length < 6) {
+                  if (value.length < 6) {
                     return 'Parol kamida 6 ta belgi bo\'lishi kerak';
                   }
                   return null;
@@ -388,18 +397,20 @@ class _AdminFormDialogState extends State<AdminFormDialog> {
   void _submit() {
     if (_formKey.currentState?.validate() ?? false) {
       final bloc = context.read<AdminBloc>();
+      final password = _passwordController.text.trim();
       if (isEditing) {
         bloc.add(AdminUpdate(
           id: widget.admin!.id,
           username: _usernameController.text.trim(),
-          password: _passwordController.text.trim(),
+          // Blank field = unchanged, so send nothing rather than an empty string.
+          password: password.isEmpty ? null : password,
           role: _selectedRole,
           branchId: _selectedRole == 'BRANCH_ADMIN' ? _selectedBranchId : null,
         ));
       } else {
         bloc.add(AdminCreate(
           username: _usernameController.text.trim(),
-          password: _passwordController.text.trim(),
+          password: password,
           role: _selectedRole,
           branchId: _selectedRole == 'BRANCH_ADMIN' ? _selectedBranchId : null,
         ));

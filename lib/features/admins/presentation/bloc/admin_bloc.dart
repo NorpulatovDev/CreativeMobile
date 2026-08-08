@@ -35,14 +35,17 @@ class AdminCreate extends AdminEvent {
 class AdminUpdate extends AdminEvent {
   final int id;
   final String username;
-  final String password;
+
+  /// Null means "leave the existing password alone". Sending a new one revokes the
+  /// admin's refresh tokens on the backend, so they have to log in again.
+  final String? password;
   final String role;
   final int? branchId;
 
   const AdminUpdate({
     required this.id,
     required this.username,
-    required this.password,
+    this.password,
     required this.role,
     this.branchId,
   });
