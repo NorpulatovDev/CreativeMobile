@@ -15,4 +15,5 @@ abstract class Routes {
   static const selectBranch = '/select-branch';
   static const approvals = '/approvals';
   static const smsHistory = '/sms-history';
+  static const permissions = '/permissions';
 }

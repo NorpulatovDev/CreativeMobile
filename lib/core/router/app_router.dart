@@ -26,6 +26,7 @@ import '../../features/groups/presentation/pages/groups_page.dart';
 import '../../features/payments/presentation/bloc/payment_bloc.dart';
 import '../../features/payments/presentation/dialogs/payment_form_dialog.dart';
 import '../../features/payments/presentation/pages/payments_page.dart';
+import '../../features/permissions/presentation/pages/permissions_page.dart';
 import '../../features/reports/presentation/pages/payment_status_page.dart';
 import '../../features/reports/presentation/pages/reports_page.dart';
 import '../../features/students/presentation/bloc/student_bloc.dart';
@@ -150,6 +151,11 @@ class AppRouter {
                 path: Routes.smsHistory,
                 name: 'sms-history',
                 builder: (context, state) => const SmsHistoryPage(),
+              ),
+              GoRoute(
+                path: Routes.permissions,
+                name: 'permissions',
+                builder: (context, state) => const PermissionsPage(),
               ),
             ],
           ),
@@ -780,6 +786,15 @@ class _BranchDrawerState extends State<_BranchDrawer> {
               onTap: () {
                 Navigator.of(context).pop();
                 context.push(Routes.admins);
+              },
+            ),
+            _DrawerNavItem(
+              icon: Icons.verified_user_rounded,
+              label: 'Ruxsatlar',
+              color: const Color(0xFF14B8A6),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push(Routes.permissions);
               },
             ),
             const SizedBox(height: 8),
