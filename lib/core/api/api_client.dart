@@ -44,8 +44,9 @@ class ApiClient {
   Future<Response<T>> get<T>(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Options? options,
   }) =>
-      _dio.get<T>(path, queryParameters: queryParameters);
+      _dio.get<T>(path, queryParameters: queryParameters, options: options);
 
   Future<Response<T>> post<T>(
     String path, {
@@ -108,7 +109,10 @@ class AuthInterceptor extends Interceptor {
       final activeBranchId = _tokenStorage.getActiveBranchFilterIdSync();
       final branchId =
           activeBranchId ?? (_tokenStorage.getUserDataSync()?['branchId'] as int?);
-      if (branchId != null) {
+      // A caller may set X-Branch-Filter explicitly for a one-off cross-branch
+      // read (e.g. listing another branch's groups). Don't clobber it with the
+      // app-wide selected branch.
+      if (branchId != null && !options.headers.containsKey('X-Branch-Filter')) {
         options.headers['X-Branch-Filter'] = branchId.toString();
       }
     }

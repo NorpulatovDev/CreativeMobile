@@ -8,6 +8,11 @@ import '../models/group_model.dart';
 
 abstract class GroupRepository {
   Future<(List<GroupModel>?, Failure?)> getAll();
+
+  /// Groups of a specific branch (SUPER_ADMIN cross-branch read). Online-only
+  /// and intentionally NOT cached — these belong to a branch other than the
+  /// selected one and must not pollute the global group cache.
+  Future<(List<GroupModel>?, Failure?)> getAllForBranch(int branchId);
   Future<(List<GroupModel>?, Failure?)> getAllSortedByTeacher({int? year, int? month});
   Future<(List<GroupModel>?, Failure?)> getByTeacherId(int teacherId);
   /// Groups assigned to the logged-in teacher (server-scoped via JWT).
@@ -49,6 +54,21 @@ class GroupRepositoryImpl implements GroupRepository {
     final cached = _localDataSource.getAll();
     if (cached.isNotEmpty) return (cached, null);
     return (null, const CacheFailure('No cached groups available'));
+  }
+
+  @override
+  Future<(List<GroupModel>?, Failure?)> getAllForBranch(int branchId) async {
+    if (!_connectivity.isOnline) {
+      return (null, const ServerFailure('Filial guruhlarini yuklash uchun internet kerak'));
+    }
+    try {
+      final groups = await _remoteDataSource.getAllForBranch(branchId);
+      return (groups, null);
+    } on DioException catch (e) {
+      return (null, ServerFailure(e.message ?? 'Failed to load groups'));
+    } catch (e) {
+      return (null, UnknownFailure(e.toString()));
+    }
   }
 
   @override

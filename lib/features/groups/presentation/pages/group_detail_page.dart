@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/branch/branch_selection_cubit.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../attendance/presentation/bloc/attendance_bloc.dart';
 import '../../../attendance/presentation/sheets/take_attendance_sheet.dart';
+import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../enrollments/data/repositories/enrollment_repository.dart';
 import '../../../payments/presentation/bloc/payment_bloc.dart';
 import '../../../payments/presentation/dialogs/payment_form_dialog.dart';
@@ -13,6 +15,7 @@ import '../bloc/enroll_student_cubit.dart';
 import '../bloc/group_detail_cubit.dart';
 import '../bloc/group_payments_cubit.dart';
 import '../bloc/group_students_cubit.dart';
+import '../bloc/transfer_branch_cubit.dart';
 import '../bloc/transfer_student_cubit.dart';
 import '../dialogs/enroll_student_dialog.dart';
 import '../dialogs/transfer_student_dialog.dart';
@@ -39,6 +42,10 @@ class _GroupDetailPageState extends State<GroupDetailPage>
   late final AttendanceBloc _attendanceBloc;
   late final EnrollStudentCubit _enrollStudentCubit;
   late final TransferStudentCubit _transferStudentCubit;
+  late final TransferBranchCubit _transferBranchCubit;
+
+  late final bool _isSuperAdmin;
+  int? _fromBranchId;
 
   bool _isTransferMode = false;
   final Set<int> _selectedStudentIds = {};
@@ -67,6 +74,21 @@ class _GroupDetailPageState extends State<GroupDetailPage>
       enrollmentRepository: getIt(),
       currentGroupId: widget.groupId,
     );
+
+    final authState = context.read<AuthBloc>().state;
+    _isSuperAdmin = authState is AuthAuthenticated && authState.user.isSuperAdmin;
+    // The group being viewed lives in the app's currently-selected branch, so
+    // that is the source branch for a cross-branch move. Only super-admins ever
+    // reach the branch flow (they always have a branch selected).
+    _fromBranchId = context.read<BranchSelectionCubit>().state.selectedBranchId;
+    _transferBranchCubit = TransferBranchCubit(
+      branchRepository: getIt(),
+      groupRepository: getIt(),
+      enrollmentRepository: getIt(),
+      fromBranchId: _fromBranchId ?? 0, // placeholder; branch flow is gated on a non-null selected branch
+      sourceGroupId: widget.groupId,
+    );
+
     _detailCubit.loadGroup();
   }
 
@@ -79,6 +101,7 @@ class _GroupDetailPageState extends State<GroupDetailPage>
     _attendanceBloc.close();
     _enrollStudentCubit.close();
     _transferStudentCubit.close();
+    _transferBranchCubit.close();
     super.dispose();
   }
 
@@ -103,10 +126,15 @@ class _GroupDetailPageState extends State<GroupDetailPage>
   void _showTransferDialog() {
     showDialog(
       context: context,
-      builder: (dialogContext) => BlocProvider.value(
-        value: _transferStudentCubit,
+      builder: (dialogContext) => MultiBlocProvider(
+        providers: [
+          BlocProvider.value(value: _transferStudentCubit),
+          BlocProvider.value(value: _transferBranchCubit),
+        ],
         child: TransferStudentDialog(
           studentIds: _selectedStudentIds.toList(),
+          isSuperAdmin: _isSuperAdmin,
+          fromBranchId: _fromBranchId,
           onSuccess: () {
             _exitTransferMode();
             _studentsCubit.reload();
@@ -284,6 +312,7 @@ class _GroupDetailPageState extends State<GroupDetailPage>
         BlocProvider.value(value: _attendanceBloc),
         BlocProvider.value(value: _enrollStudentCubit),
         BlocProvider.value(value: _transferStudentCubit),
+        BlocProvider.value(value: _transferBranchCubit),
       ],
       child: BlocListener<GroupDetailCubit, GroupDetailState>(
         listenWhen: (prev, curr) {

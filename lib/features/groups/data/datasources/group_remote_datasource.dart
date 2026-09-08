@@ -1,8 +1,15 @@
+import 'package:dio/dio.dart';
+
 import '../../../../core/api/api_client.dart';
 import '../models/group_model.dart';
 
 abstract class GroupRemoteDataSource {
   Future<List<GroupModel>> getAll();
+
+  /// Groups of a specific branch, regardless of the app-wide selected branch.
+  /// Sends an explicit X-Branch-Filter so SUPER_ADMIN can read another branch's
+  /// groups (e.g. when moving a student across branches).
+  Future<List<GroupModel>> getAllForBranch(int branchId);
   Future<List<GroupModel>> getAllSortedByTeacher({int? year, int? month});
   Future<List<GroupModel>> getByTeacherId(int teacherId);
   /// Groups assigned to the logged-in TEACHER. Server derives the teacher
@@ -22,6 +29,17 @@ class GroupRemoteDataSourceImpl implements GroupRemoteDataSource {
   @override
   Future<List<GroupModel>> getAll() async {
     final response = await _apiClient.get<List<dynamic>>('/api/groups');
+    return (response.data ?? [])
+        .map((json) => GroupModel.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<List<GroupModel>> getAllForBranch(int branchId) async {
+    final response = await _apiClient.get<List<dynamic>>(
+      '/api/groups',
+      options: Options(headers: {'X-Branch-Filter': branchId.toString()}),
+    );
     return (response.data ?? [])
         .map((json) => GroupModel.fromJson(json as Map<String, dynamic>))
         .toList();

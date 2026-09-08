@@ -70,3 +70,27 @@ class TransferRequest {
         'transferAllPayments': transferAllPayments,
       };
 }
+
+class TransferBranchRequest {
+  final List<int> studentIds;
+  final int fromBranchId;
+  final int toBranchId;
+  final int targetGroupId;
+  final bool transferAllPayments;
+
+  const TransferBranchRequest({
+    required this.studentIds,
+    required this.fromBranchId,
+    required this.toBranchId,
+    required this.targetGroupId,
+    this.transferAllPayments = false,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'studentIds': studentIds,
+        'fromBranchId': fromBranchId,
+        'toBranchId': toBranchId,
+        'targetGroupId': targetGroupId,
+        'transferAllPayments': transferAllPayments,
+      };
+}

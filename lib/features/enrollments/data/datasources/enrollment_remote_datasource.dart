@@ -8,6 +8,7 @@ abstract class EnrollmentRemoteDataSource {
   Future<List<EnrollmentModel>> getStudentActiveGroups(int studentId);
   Future<List<EnrollmentModel>> getGroupStudents(int groupId);
   Future<void> transferStudents(TransferRequest request);
+  Future<void> transferStudentsBranch(TransferBranchRequest request);
 }
 
 class EnrollmentRemoteDataSourceImpl implements EnrollmentRemoteDataSource {
@@ -60,6 +61,14 @@ class EnrollmentRemoteDataSourceImpl implements EnrollmentRemoteDataSource {
   Future<void> transferStudents(TransferRequest request) async {
     await _apiClient.post<void>(
       '/api/enrollments/transfer',
+      data: request.toJson(),
+    );
+  }
+
+  @override
+  Future<void> transferStudentsBranch(TransferBranchRequest request) async {
+    await _apiClient.post<void>(
+      '/api/enrollments/transfer-branch',
       data: request.toJson(),
     );
   }

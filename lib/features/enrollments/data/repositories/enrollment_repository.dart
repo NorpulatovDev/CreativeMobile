@@ -12,6 +12,14 @@ abstract class EnrollmentRepository {
   Future<(List<EnrollmentModel>?, Failure?)> getStudentGroups(int studentId);
   Future<(List<EnrollmentModel>?, Failure?)> getGroupStudents(int groupId);
   Future<Failure?> transferStudents(List<int> studentIds, int fromGroupId, int toGroupId, {bool transferAllPayments = false});
+  Future<Failure?> transferStudentsBranch(
+    List<int> studentIds,
+    int fromBranchId,
+    int toBranchId,
+    int targetGroupId, {
+    int? sourceGroupId,
+    bool transferAllPayments = false,
+  });
 }
 
 class EnrollmentRepositoryImpl implements EnrollmentRepository {
@@ -115,6 +123,46 @@ class EnrollmentRepositoryImpl implements EnrollmentRepository {
       );
       for (final studentId in studentIds) {
         await _localDataSource.removeByStudentAndGroup(studentId, fromGroupId);
+      }
+      return null;
+    } on DioException catch (e) {
+      final message =
+          e.response?.data?['message'] as String? ??
+          e.message ??
+          'O\'tkazishda xatolik yuz berdi';
+      return ServerFailure(message);
+    } catch (e) {
+      return UnknownFailure(e.toString());
+    }
+  }
+
+  @override
+  Future<Failure?> transferStudentsBranch(
+    List<int> studentIds,
+    int fromBranchId,
+    int toBranchId,
+    int targetGroupId, {
+    int? sourceGroupId,
+    bool transferAllPayments = false,
+  }) async {
+    if (!_connectivity.isOnline) {
+      return const ServerFailure('O\'tkazish uchun internet aloqasi kerak');
+    }
+    try {
+      await _remoteDataSource.transferStudentsBranch(
+        TransferBranchRequest(
+          studentIds: studentIds,
+          fromBranchId: fromBranchId,
+          toBranchId: toBranchId,
+          targetGroupId: targetGroupId,
+          transferAllPayments: transferAllPayments,
+        ),
+      );
+      // Drop the source-group enrolments from the cache so the roster refreshes.
+      if (sourceGroupId != null) {
+        for (final studentId in studentIds) {
+          await _localDataSource.removeByStudentAndGroup(studentId, sourceGroupId);
+        }
       }
       return null;
     } on DioException catch (e) {
