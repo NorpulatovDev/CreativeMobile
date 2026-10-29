@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/branch/branch_selection_cubit.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/router/routes.dart';
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/phone_formatter.dart';
+import '../../../../core/utils/uzbek_phone_formatter.dart';
 import '../../data/models/teacher_model.dart';
 import '../bloc/teacher_bloc.dart';
 
@@ -24,8 +27,22 @@ class TeachersPage extends StatelessWidget {
   }
 }
 
-class TeachersView extends StatelessWidget {
+class TeachersView extends StatefulWidget {
   const TeachersView({super.key});
+
+  @override
+  State<TeachersView> createState() => _TeachersViewState();
+}
+
+class _TeachersViewState extends State<TeachersView> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,18 +106,34 @@ class TeachersView extends StatelessWidget {
                 ),
               );
             }
-            return RefreshIndicator(
-              onRefresh: () async {
-                context.read<TeacherBloc>().add(TeacherLoadAll());
-              },
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: state.teachers.length,
-                itemBuilder: (context, index) {
-                  final teacher = state.teachers[index];
-                  return _TeacherCard(teacher: teacher);
-                },
-              ),
+            final q = _query.trim().toLowerCase();
+            final filtered = q.isEmpty
+                ? state.teachers
+                : state.teachers
+                    .where((t) =>
+                        t.fullName.toLowerCase().contains(q) ||
+                        t.phoneNumber.toLowerCase().contains(q))
+                    .toList();
+            return Column(
+              children: [
+                _buildSearchBar(),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () async {
+                      context.read<TeacherBloc>().add(TeacherLoadAll());
+                    },
+                    child: filtered.isEmpty
+                        ? _buildNoResults(context)
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) {
+                              return _TeacherCard(teacher: filtered[index]);
+                            },
+                          ),
+                  ),
+                ),
+              ],
             );
           }
           return const SizedBox.shrink();
@@ -110,6 +143,82 @@ class TeachersView extends StatelessWidget {
         onPressed: () => _showTeacherDialog(context),
         child: const Icon(Icons.add),
       ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.neutral200),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.neutral900.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: TextField(
+          controller: _searchController,
+          onChanged: (value) => setState(() => _query = value),
+          decoration: InputDecoration(
+            hintText: 'O\'qituvchilarni qidirish...',
+            hintStyle: TextStyle(
+              color: AppColors.neutral400,
+              fontWeight: FontWeight.w400,
+            ),
+            prefixIcon: Icon(Icons.search_rounded, color: AppColors.neutral400),
+            suffixIcon: _query.isNotEmpty
+                ? IconButton(
+                    icon: Icon(Icons.close_rounded, color: AppColors.neutral400),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _query = '');
+                    },
+                  )
+                : null,
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoResults(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+        Center(
+          child: Column(
+            children: [
+              Icon(
+                Icons.search_off_rounded,
+                size: 56,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Natija topilmadi',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '"${_searchController.text}" bo\'yicha o\'qituvchi yo\'q',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -299,7 +408,11 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.teacher?.fullName);
-    _phoneController = TextEditingController(text: widget.teacher?.phoneNumber);
+    _phoneController = TextEditingController(
+      text: widget.teacher != null
+          ? PhoneValidator.toDisplayFormat(widget.teacher!.phoneNumber)
+          : '+998 ',
+    );
     _passwordController = TextEditingController();
   }
 
@@ -340,15 +453,17 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
               decoration: const InputDecoration(
                 labelText: 'Phone Number',
                 prefixIcon: Icon(Icons.phone_outlined),
-                hintText: '+998XXXXXXXXX',
+                hintText: '+998 XX XXX XX XX',
               ),
               keyboardType: TextInputType.phone,
+              inputFormatters: [UzbekPhoneNumberFormatter()],
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
+                final digits = (value ?? '').replaceAll(' ', '');
+                if (digits.isEmpty || digits == '+998') {
                   return 'Please enter phone number';
                 }
-                if (!_phoneRegExp.hasMatch(value)) {
-                  return 'Format: +998XXXXXXXXX';
+                if (!_phoneRegExp.hasMatch(digits)) {
+                  return 'Format: +998 XX XXX XX XX';
                 }
                 return null;
               },
@@ -399,14 +514,14 @@ class _TeacherFormDialogState extends State<TeacherFormDialog> {
         bloc.add(TeacherUpdate(
           id: widget.teacher!.id,
           fullName: _nameController.text.trim(),
-          phoneNumber: _phoneController.text.trim(),
+          phoneNumber: _phoneController.text.replaceAll(' ', ''),
           username: null,
           password: passwordArg,
         ));
       } else {
         bloc.add(TeacherCreate(
           fullName: _nameController.text.trim(),
-          phoneNumber: _phoneController.text.trim(),
+          phoneNumber: _phoneController.text.replaceAll(' ', ''),
           username: null,
           password: passwordArg,
         ));

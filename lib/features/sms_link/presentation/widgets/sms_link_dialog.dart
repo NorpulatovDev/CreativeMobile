@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/utils/uzbek_phone_formatter.dart';
 import '../../data/repositories/sms_link_repository.dart';
 
 class SmsLinkDialog extends StatefulWidget {
@@ -144,16 +145,18 @@ class _SmsLinkDialogState extends State<SmsLinkDialog> {
             controller: _phoneController,
             decoration: const InputDecoration(
               labelText: 'Phone Number',
-              hintText: '+998XXXXXXXXX',
+              hintText: '+998 XX XXX XX XX',
               prefixIcon: Icon(Icons.phone),
             ),
             keyboardType: TextInputType.phone,
+            inputFormatters: [UzbekPhoneNumberFormatter()],
             validator: (value) {
-              if (value == null || value.trim().isEmpty) {
+              final digits = (value ?? '').replaceAll(' ', '');
+              if (digits.isEmpty || digits == '+998') {
                 return 'Please enter phone number';
               }
-              if (!_phoneRegExp.hasMatch(value)) {
-                return 'Format: +998XXXXXXXXX';
+              if (!_phoneRegExp.hasMatch(digits)) {
+                return 'Format: +998 XX XXX XX XX';
               }
               return null;
             },
@@ -169,7 +172,7 @@ class _SmsLinkDialogState extends State<SmsLinkDialog> {
     setState(() => _loading = true);
 
     final repository = getIt<SmsLinkRepository>();
-    final phone = _phoneController.text.trim();
+    final phone = _phoneController.text.replaceAll(' ', '');
 
     if (_linkByCode) {
       final code = _codeController.text.trim();

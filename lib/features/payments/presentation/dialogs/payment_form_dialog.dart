@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/sms_service.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/number_formatter.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
 import '../../../groups/data/models/group_model.dart';
 import '../../data/models/payment_model.dart';
@@ -73,7 +74,7 @@ class _PaymentFormBodyState extends State<_PaymentFormBody> {
     super.initState();
     _amountController = TextEditingController(
       text: widget.payment != null
-          ? widget.payment!.amount.toStringAsFixed(0)
+          ? formatAmount(widget.payment!.amount)
           : '',
     );
   }
@@ -114,7 +115,7 @@ class _PaymentFormBodyState extends State<_PaymentFormBody> {
     if (state.selectedGroupId == null || state.selectedStudentId == null) {
       return;
     }
-    final amount = double.tryParse(_amountController.text.trim());
+    final amount = double.tryParse(amountDigits(_amountController.text));
     if (amount == null || amount <= 0) return;
 
     context.read<PaymentFormCubit>().submit(
@@ -329,14 +330,17 @@ class _PaymentFormBodyState extends State<_PaymentFormBody> {
             child: TextFormField(
               controller: _amountController,
               keyboardType: TextInputType.number,
+              inputFormatters: [ThousandsSeparatorInputFormatter()],
               decoration: InputDecoration(
                 prefixIcon: Icon(Icons.payments_outlined,
                     color: AppColors.neutral400),
-                hintText: 'Masalan: 500000',
+                hintText: 'Masalan: 500 000',
               ),
               validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Miqdorni kiriting';
-                if (double.tryParse(v) == null || double.parse(v) <= 0) {
+                final digits = amountDigits(v ?? '');
+                if (digits.isEmpty) return 'Miqdorni kiriting';
+                final n = double.tryParse(digits);
+                if (n == null || n <= 0) {
                   return 'To\'g\'ri miqdor kiriting';
                 }
                 return null;
@@ -436,7 +440,7 @@ class _PaymentFormBodyState extends State<_PaymentFormBody> {
           context.read<PaymentFormCubit>().selectGroup(
                 group,
                 onAmountPrefill: (fee) {
-                  _amountController.text = fee.toStringAsFixed(0);
+                  _amountController.text = formatAmount(fee);
                 },
               );
         },

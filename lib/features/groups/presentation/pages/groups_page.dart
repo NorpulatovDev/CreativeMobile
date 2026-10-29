@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
@@ -820,7 +821,7 @@ class _GroupFormDialogState extends State<GroupFormDialog> {
     text: widget.group?.name,
   );
   late final TextEditingController _feeController = TextEditingController(
-    text: widget.group?.monthlyFee.toStringAsFixed(0),
+    text: widget.group != null ? formatAmount(widget.group!.monthlyFee) : null,
   );
   int? _selectedTeacherId;
   List<TeacherModel> _teachers = [];
@@ -967,14 +968,18 @@ class _GroupFormDialogState extends State<GroupFormDialog> {
                             _buildTextField(
                               controller: _feeController,
                               label: 'Oylik to\'lov (so\'m)',
-                              hint: 'Masalan: 500000',
+                              hint: 'Masalan: 500 000',
                               icon: Icons.payments_outlined,
                               keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                ThousandsSeparatorInputFormatter(),
+                              ],
                               validator: (v) {
-                                if (v == null || v.trim().isEmpty)
+                                final digits = amountDigits(v ?? '');
+                                if (digits.isEmpty)
                                   return 'To\'lov miqdorini kiriting';
-                                if (double.tryParse(v) == null ||
-                                    double.parse(v) <= 0)
+                                final n = double.tryParse(digits);
+                                if (n == null || n <= 0)
                                   return 'To\'g\'ri miqdor kiriting';
                                 return null;
                               },
@@ -1044,6 +1049,7 @@ class _GroupFormDialogState extends State<GroupFormDialog> {
     required String hint,
     required IconData icon,
     TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
     String? Function(String?)? validator,
   }) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1060,6 +1066,7 @@ class _GroupFormDialogState extends State<GroupFormDialog> {
       TextFormField(
         controller: controller,
         keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
         validator: validator,
         decoration: InputDecoration(
           hintText: hint,
@@ -1079,7 +1086,7 @@ class _GroupFormDialogState extends State<GroupFormDialog> {
             id: widget.group!.id,
             name: _nameController.text.trim(),
             teacherId: _selectedTeacherId!,
-            monthlyFee: double.parse(_feeController.text.trim()),
+            monthlyFee: double.parse(amountDigits(_feeController.text)),
           ),
         );
       } else {
@@ -1087,7 +1094,7 @@ class _GroupFormDialogState extends State<GroupFormDialog> {
           GroupCreate(
             name: _nameController.text.trim(),
             teacherId: _selectedTeacherId!,
-            monthlyFee: double.parse(_feeController.text.trim()),
+            monthlyFee: double.parse(amountDigits(_feeController.text)),
           ),
         );
       }

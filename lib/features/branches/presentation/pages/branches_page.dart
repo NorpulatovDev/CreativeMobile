@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/phone_formatter.dart';
+import '../../../../core/utils/uzbek_phone_formatter.dart';
 import '../../data/models/branch_model.dart';
 import '../bloc/branch_bloc.dart';
 
@@ -249,7 +251,12 @@ class _BranchFormDialogState extends State<BranchFormDialog> {
     super.initState();
     _nameController = TextEditingController(text: widget.branch?.name);
     _addressController = TextEditingController(text: widget.branch?.address);
-    _phoneController = TextEditingController(text: widget.branch?.phoneNumber);
+    final existingPhone = widget.branch?.phoneNumber;
+    _phoneController = TextEditingController(
+      text: (existingPhone != null && existingPhone.isNotEmpty)
+          ? PhoneValidator.toDisplayFormat(existingPhone)
+          : '',
+    );
   }
 
   @override
@@ -292,9 +299,10 @@ class _BranchFormDialogState extends State<BranchFormDialog> {
               decoration: const InputDecoration(
                 labelText: 'Telefon (ixtiyoriy)',
                 prefixIcon: Icon(Icons.phone_outlined),
-                hintText: '+998XXXXXXXXX',
+                hintText: '+998 XX XXX XX XX',
               ),
               keyboardType: TextInputType.phone,
+              inputFormatters: [UzbekPhoneNumberFormatter()],
             ),
           ],
         ),
@@ -317,19 +325,23 @@ class _BranchFormDialogState extends State<BranchFormDialog> {
       final bloc = context.read<BranchBloc>();
       final name = _nameController.text.trim();
       final address = _addressController.text.trim();
-      final phone = _phoneController.text.trim();
+      // Optional phone: only send a complete +998 + 9-digit number; an empty
+      // or partially-typed field is treated as "no phone".
+      final digits = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+      final subscriber = digits.startsWith('998') ? digits.substring(3) : digits;
+      final phone = subscriber.length == 9 ? '+998$subscriber' : null;
       if (isEditing) {
         bloc.add(BranchUpdate(
           id: widget.branch!.id,
           name: name,
           address: address.isNotEmpty ? address : null,
-          phoneNumber: phone.isNotEmpty ? phone : null,
+          phoneNumber: phone,
         ));
       } else {
         bloc.add(BranchCreate(
           name: name,
           address: address.isNotEmpty ? address : null,
-          phoneNumber: phone.isNotEmpty ? phone : null,
+          phoneNumber: phone,
         ));
       }
       Navigator.pop(context);

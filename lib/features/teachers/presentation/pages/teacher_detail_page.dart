@@ -83,7 +83,9 @@ class _TeacherDetailPageState extends State<TeacherDetailPage>
 
   String get _monthLabel => DateFormat('MMMM yyyy').format(_selectedMonth);
 
-  String _formatAmount(double amount) => '${_numberFormat.format(amount)} so\'m';
+  // Space-grouped to match the rest of the app: 300000 -> "300 000 so'm".
+  String _formatAmount(double amount) =>
+      '${_numberFormat.format(amount).replaceAll(',', ' ')} so\'m';
 
   Future<void> _exportPdf() async {
     if (_report == null) return;
