@@ -9,6 +9,7 @@ import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/widgets/app_widgets.dart';
 import '../../../data/models/report_models.dart';
 import '../../bloc/monthly_report_cubit.dart';
+import '../../utils/monthly_report_exporter.dart';
 import '../../widgets/report_stat_card.dart';
 import '../payment_status_page.dart';
 
@@ -328,6 +329,22 @@ class _ReportContent extends StatelessWidget {
         Row(
           children: [
             Expanded(
+              child: Text(
+                monthLabel,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.neutral800,
+                ),
+              ),
+            ),
+            _ShareReportButton(report: report),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
               child: ReportStatCard(
                 title: 'Kutilgan',
                 value: formatAmount(report.expectedRevenue),
@@ -413,6 +430,60 @@ class _ReportContent extends StatelessWidget {
         else
           ...report.groupStats.map((g) => _GroupStatsCard(group: g)),
       ],
+    );
+  }
+}
+
+// ── Share (PDF export) button ────────────────────────────────────────────────
+
+class _ShareReportButton extends StatefulWidget {
+  final MonthlyReport report;
+
+  const _ShareReportButton({required this.report});
+
+  @override
+  State<_ShareReportButton> createState() => _ShareReportButtonState();
+}
+
+class _ShareReportButtonState extends State<_ShareReportButton> {
+  bool _exporting = false;
+
+  Future<void> _export() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      await MonthlyReportExporter.sharePdf(widget.report);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PDF yaratishda xatolik yuz berdi')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_exporting) {
+      return const Padding(
+        padding: EdgeInsets.all(10),
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    return IconButton(
+      onPressed: _export,
+      icon: const Icon(Icons.share_rounded),
+      color: AppColors.primary,
+      tooltip: 'PDF ulashish',
+      style: IconButton.styleFrom(
+        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+      ),
     );
   }
 }
