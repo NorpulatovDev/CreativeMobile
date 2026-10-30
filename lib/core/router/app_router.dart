@@ -27,6 +27,7 @@ import '../../features/payments/presentation/bloc/payment_bloc.dart';
 import '../../features/payments/presentation/dialogs/payment_form_dialog.dart';
 import '../../features/payments/presentation/pages/payments_page.dart';
 import '../../features/permissions/presentation/pages/permissions_page.dart';
+import '../../features/sms_templates/presentation/pages/sms_templates_page.dart';
 import '../../features/reports/presentation/pages/payment_status_page.dart';
 import '../../features/reports/presentation/pages/reports_page.dart';
 import '../../features/students/presentation/bloc/student_bloc.dart';
@@ -157,6 +158,11 @@ class AppRouter {
                 name: 'permissions',
                 builder: (context, state) => const PermissionsPage(),
               ),
+              GoRoute(
+                path: Routes.smsTemplates,
+                name: 'sms-templates',
+                builder: (context, state) => const SmsTemplatesPage(),
+              ),
             ],
           ),
           // Branch 1 — Groups
@@ -230,6 +236,11 @@ class AppRouter {
     // TEACHER account from using the admin UI even if it authenticates.
     if (authState.user.isTeacher) {
       return loc == Routes.login ? null : Routes.login;
+    }
+
+    // Only super-admins may edit SMS templates.
+    if (loc == Routes.smsTemplates && !authState.user.isSuperAdmin) {
+      return Routes.home;
     }
 
     if (authState.user.isSuperAdmin) {
@@ -795,6 +806,15 @@ class _BranchDrawerState extends State<_BranchDrawer> {
               onTap: () {
                 Navigator.of(context).pop();
                 context.push(Routes.permissions);
+              },
+            ),
+            _DrawerNavItem(
+              icon: Icons.edit_note_rounded,
+              label: 'SMS shablonlari',
+              color: const Color(0xFF6366F1),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push(Routes.smsTemplates);
               },
             ),
             const SizedBox(height: 8),

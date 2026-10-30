@@ -39,6 +39,7 @@ class PaymentFormDialog extends StatelessWidget {
         enrollmentLocal: getIt(),
         studentRepo: getIt(),
         smsService: getIt(),
+        smsTemplates: getIt(),
         paymentBloc: context.read<PaymentBloc>(),
         initialMonth: initialMonth,
         preselectedGroupId: preselectedGroupId,

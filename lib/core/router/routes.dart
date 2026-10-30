@@ -16,4 +16,5 @@ abstract class Routes {
   static const approvals = '/approvals';
   static const smsHistory = '/sms-history';
   static const permissions = '/permissions';
+  static const smsTemplates = '/sms-templates';
 }

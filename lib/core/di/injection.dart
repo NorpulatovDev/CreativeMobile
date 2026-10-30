@@ -10,6 +10,9 @@ import '../../features/branches/data/datasources/branch_local_datasource.dart';
 import '../../features/branches/data/datasources/branch_remote_datasource.dart';
 import '../../features/branches/data/repositories/branch_repository.dart';
 import '../../features/branches/presentation/bloc/branch_bloc.dart';
+import '../../features/sms_templates/data/datasources/sms_template_local_datasource.dart';
+import '../../features/sms_templates/data/datasources/sms_template_remote_datasource.dart';
+import '../../features/sms_templates/data/repositories/sms_template_repository.dart';
 
 // Admins
 import '../../features/admins/data/datasources/admin_remote_datasource.dart';
@@ -299,6 +302,17 @@ Future<void> configureDependencies() async {
   // Centralized SMS sending from the Admin device (foreground queue processor)
   getIt.registerSingleton<SmsQueueProcessor>(
     SmsQueueProcessor(getIt(), getIt(), getIt(), getIt()),
+  );
+
+  // SMS templates (edited by super admin; read by every admin device, cached offline)
+  final smsTemplateLocal = SmsTemplateLocalDataSource();
+  await smsTemplateLocal.initialize();
+  getIt.registerSingleton<SmsTemplateLocalDataSource>(smsTemplateLocal);
+  getIt.registerSingleton<SmsTemplateRemoteDataSource>(
+    SmsTemplateRemoteDataSourceImpl(getIt()),
+  );
+  getIt.registerSingleton<SmsTemplateRepository>(
+    SmsTemplateRepositoryImpl(getIt(), getIt(), getIt()),
   );
 
   // Branches Feature (super admin only, no offline)

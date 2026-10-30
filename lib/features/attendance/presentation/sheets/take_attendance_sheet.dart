@@ -11,12 +11,14 @@ import '../bloc/take_attendance_sheet_cubit.dart';
 
 class TakeAttendanceSheet extends StatelessWidget {
   final int groupId;
+  final String teacherName;
   final DateTime initialDate;
   final List<StudentModel> students;
 
   const TakeAttendanceSheet({
     super.key,
     required this.groupId,
+    this.teacherName = '',
     required this.initialDate,
     required this.students,
   });
@@ -27,7 +29,9 @@ class TakeAttendanceSheet extends StatelessWidget {
       create: (_) => TakeAttendanceSheetCubit(
         enrollmentRepo: getIt(),
         smsService: getIt(),
+        smsTemplates: getIt(),
         groupId: groupId,
+        teacherName: teacherName,
         students: students,
       )..load(),
       child: _TakeAttendanceSheetBody(groupId: groupId),

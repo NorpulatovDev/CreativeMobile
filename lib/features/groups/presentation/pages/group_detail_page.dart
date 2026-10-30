@@ -262,6 +262,7 @@ class _GroupDetailPageState extends State<GroupDetailPage>
         value: _attendanceBloc,
         child: TakeAttendanceSheet(
           groupId: widget.groupId,
+          teacherName: state.group.teacherName,
           initialDate: state.selectedMonth,
           students: _studentsCubit.students,
         ),

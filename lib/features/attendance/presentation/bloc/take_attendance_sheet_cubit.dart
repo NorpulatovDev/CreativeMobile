@@ -2,8 +2,10 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/services/sms_service.dart';
+import '../../../../core/services/sms_template_renderer.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
 import '../../../enrollments/data/repositories/enrollment_repository.dart';
+import '../../../sms_templates/data/repositories/sms_template_repository.dart';
 import '../../../students/data/models/student_model.dart';
 
 // States
@@ -72,16 +74,22 @@ class TakeAttendanceSheetReady extends TakeAttendanceSheetState {
 class TakeAttendanceSheetCubit extends Cubit<TakeAttendanceSheetState> {
   final EnrollmentRepository _enrollmentRepo;
   final SmsService _smsService;
+  final SmsTemplateRepository _smsTemplates;
   final int groupId;
+  // For the {oqituvchi} SMS placeholder.
+  final String teacherName;
   final Map<int, StudentModel> _studentMap;
 
   TakeAttendanceSheetCubit({
     required EnrollmentRepository enrollmentRepo,
     required SmsService smsService,
+    required SmsTemplateRepository smsTemplates,
     required this.groupId,
+    this.teacherName = '',
     required List<StudentModel> students,
   })  : _enrollmentRepo = enrollmentRepo,
         _smsService = smsService,
+        _smsTemplates = smsTemplates,
         _studentMap = {for (final s in students) s.id: s},
         super(TakeAttendanceSheetLoading());
 
@@ -138,10 +146,18 @@ class TakeAttendanceSheetCubit extends Cubit<TakeAttendanceSheetState> {
     final d = date.day.toString().padLeft(2, '0');
     final m = date.month.toString().padLeft(2, '0');
     final dateStr = '$d.$m.${date.year}';
+    final groupName = ready.enrollments.firstOrNull?.groupName ?? '';
 
+    final template = await _smsTemplates.bodyFor(SmsTemplateType.attendanceAbsent);
+    if (isClosed) return;
     final result = await _smsService.send(
       student.parentPhoneNumber,
-      "Hurmatli ota-ona,\nCreative O'quv Markazi: ${student.fullName} bugun ($dateStr) darsga kelmadi.\nIltimos, kelmaslik sababini bizga ma'lum qiling.",
+      renderSmsTemplate(template, {
+        'oquvchi': student.fullName,
+        'sana': dateStr,
+        'guruh': groupName,
+        'oqituvchi': teacherName,
+      }),
     );
 
     if (isClosed) return;

@@ -2,12 +2,14 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/services/sms_service.dart';
+import '../../../../core/services/sms_template_renderer.dart';
 import '../../../enrollments/data/datasources/enrollment_local_datasource.dart';
 import '../../../enrollments/data/models/enrollment_model.dart';
 import '../../../enrollments/data/repositories/enrollment_repository.dart';
 import '../../../groups/data/datasources/group_local_datasource.dart';
 import '../../../groups/data/models/group_model.dart';
 import '../../../groups/data/repositories/group_repository.dart';
+import '../../../sms_templates/data/repositories/sms_template_repository.dart';
 import '../../../students/data/repositories/student_repository.dart';
 import '../../data/models/payment_model.dart';
 import 'payment_bloc.dart';
@@ -114,6 +116,7 @@ class PaymentFormCubit extends Cubit<PaymentFormState> {
   final EnrollmentLocalDataSource _enrollmentLocal;
   final StudentRepository _studentRepo;
   final SmsService _smsService;
+  final SmsTemplateRepository _smsTemplates;
   final PaymentBloc _paymentBloc;
 
   int? _loadedGroupId;
@@ -125,6 +128,7 @@ class PaymentFormCubit extends Cubit<PaymentFormState> {
     required EnrollmentLocalDataSource enrollmentLocal,
     required StudentRepository studentRepo,
     required SmsService smsService,
+    required SmsTemplateRepository smsTemplates,
     required PaymentBloc paymentBloc,
     required String initialMonth,
     int? preselectedGroupId,
@@ -136,6 +140,7 @@ class PaymentFormCubit extends Cubit<PaymentFormState> {
         _enrollmentLocal = enrollmentLocal,
         _studentRepo = studentRepo,
         _smsService = smsService,
+        _smsTemplates = smsTemplates,
         _paymentBloc = paymentBloc,
         super(editing != null
             ? PaymentFormReady(
@@ -251,16 +256,23 @@ class PaymentFormCubit extends Cubit<PaymentFormState> {
       ));
     } else {
       final (student, _) = await _studentRepo.getById(ready.selectedStudentId!);
+      final template = await _smsTemplates.bodyFor(SmsTemplateType.paymentReceived);
       if (isClosed) return;
 
       final current = state as PaymentFormReady;
-      final monthLabel = _formatMonth(current.selectedMonth);
+      final group = current.groups
+          .where((g) => g.id == current.selectedGroupId)
+          .firstOrNull;
       emit(current.copyWith(
         pendingSmsPhone: student?.parentPhoneNumber,
         pendingSmsMessage: student != null
-            ? "Assalomu alaykum!\nCreative O'quv Markazi ma'muriyati sizga ma'lum qiladiki, "
-                "${student.fullName}ning $monthLabel oyi uchun "
-                "${amount.toStringAsFixed(0)} so'm to'lovi qabul qilindi.\nRahmat!"
+            ? renderSmsTemplate(template, {
+                'oquvchi': student.fullName,
+                'oy': _formatMonth(current.selectedMonth),
+                'summa': amount.toStringAsFixed(0),
+                'guruh': group?.name ?? '',
+                'oqituvchi': group?.teacherName ?? '',
+              })
             : null,
       ));
 
