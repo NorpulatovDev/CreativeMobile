@@ -138,6 +138,8 @@ class _GroupsTab extends StatelessWidget {
         if (state is InquiryGroupActionSuccess) {
           _showSnackBar(context, state.message, AppColors.success,
               Icons.check_circle_outline);
+          // A deleted group takes its inquiries with it; refresh that tab too.
+          context.read<InquiryBloc>().add(InquiryLoadAll());
         }
       },
       buildWhen: (_, curr) => curr is! InquiryGroupActionSuccess,
@@ -165,10 +167,17 @@ class _GroupsTab extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (context, index) => _GroupCard(
                 group: groups[index],
-                onTap: () => context.push(
-                  '${Routes.inquiries}/groups/${groups[index].id}',
-                  extra: groups[index],
-                ),
+                onTap: () => context
+                    .push(
+                      '${Routes.inquiries}/groups/${groups[index].id}',
+                      extra: groups[index],
+                    )
+                    // The detail page has its own blocs; refresh after e.g. a migration.
+                    .then((_) {
+                  if (!context.mounted) return;
+                  context.read<InquiryGroupBloc>().add(InquiryGroupLoadAll());
+                  context.read<InquiryBloc>().add(InquiryLoadAll());
+                }),
                 onDelete: () =>
                     _showDeleteGroupDialog(context, groups[index]),
               ),
@@ -235,7 +244,9 @@ class _GroupsTab extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                '"${group.name}" guruhini o\'chirishni xohlaysizmi?\nFaqat bo\'sh guruhlar o\'chiriladi.',
+                group.inquiryCount > 0
+                    ? '"${group.name}" guruhini o\'chirishni xohlaysizmi?\nGuruhdagi ${group.inquiryCount} ta so\'rov ham o\'chiriladi.'
+                    : '"${group.name}" guruhini o\'chirishni xohlaysizmi?',
                 textAlign: TextAlign.center,
                 style: Theme.of(context)
                     .textTheme

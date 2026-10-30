@@ -88,7 +88,9 @@ class InquiryGroupRepositoryImpl implements InquiryGroupRepository {
       await _remote.delete(id);
       return null;
     } on DioException catch (e) {
-      return ServerFailure(e.message ?? 'Failed to delete inquiry group');
+      final data = e.response?.data;
+      return ServerFailure((data is Map ? data['message'] as String? : null) ??
+          'Guruhni o\'chirishda xatolik yuz berdi');
     } catch (e) {
       return UnknownFailure(e.toString());
     }

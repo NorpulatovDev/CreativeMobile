@@ -158,6 +158,9 @@ class InquiryGroupBloc extends Bloc<InquiryGroupEvent, InquiryGroupState> {
       emit(InquiryGroupError(failure.message));
       emit(InquiryGroupLoaded(_groups));
     } else {
+      // Refetch so the migrated group's inquiry count drops to zero.
+      final (groups, _) = await _repository.getAll();
+      if (groups != null) _groups = groups;
       emit(const InquiryGroupActionSuccess('So\'rovlar guruhga ko\'chirildi'));
       emit(InquiryGroupLoaded(_groups));
     }

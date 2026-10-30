@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/branch/branch_selection_cubit.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../auth/presentation/bloc/auth_bloc.dart';
+import '../../../branches/data/models/branch_model.dart';
+import '../../../branches/data/repositories/branch_repository.dart';
 import '../../../groups/data/models/group_model.dart';
+import '../../../groups/data/repositories/group_repository.dart';
 import '../../../groups/presentation/bloc/group_bloc.dart';
 import '../../data/models/inquiry_group_model.dart';
 import '../../data/models/inquiry_model.dart';
@@ -111,6 +116,8 @@ class _InquiryGroupDetailViewState extends State<_InquiryGroupDetailView> {
             if (state is InquiryGroupActionSuccess) {
               _showSnackBar(state.message, AppColors.success,
                   Icons.check_circle_outline);
+              // Migrated inquiries are deleted server-side; reload so they vanish here too.
+              context.read<InquiryBloc>().add(InquiryLoadAll());
             }
           },
         ),
@@ -470,6 +477,11 @@ class _InquiryGroupDetailViewState extends State<_InquiryGroupDetailView> {
   }
 
   void _showMigrateDialog(BuildContext context) {
+    final authState = context.read<AuthBloc>().state;
+    final isSuperAdmin =
+        authState is AuthAuthenticated && authState.user.isSuperAdmin;
+    final currentBranchId =
+        context.read<BranchSelectionCubit>().state.selectedBranchId;
     showDialog(
       context: context,
       builder: (dialogContext) => MultiBlocProvider(
@@ -478,7 +490,11 @@ class _InquiryGroupDetailViewState extends State<_InquiryGroupDetailView> {
           BlocProvider.value(value: context.read<InquiryGroupBloc>()),
           BlocProvider.value(value: context.read<GroupBloc>()),
         ],
-        child: _MigrateDialog(inquiryGroup: widget.group),
+        child: _MigrateDialog(
+          inquiryGroup: widget.group,
+          isSuperAdmin: isSuperAdmin,
+          currentBranchId: currentBranchId,
+        ),
       ),
     );
   }
@@ -486,8 +502,15 @@ class _InquiryGroupDetailViewState extends State<_InquiryGroupDetailView> {
 
 class _MigrateDialog extends StatefulWidget {
   final InquiryGroupModel inquiryGroup;
+  // Only super-admins may pick another branch; branch admins stay in their own.
+  final bool isSuperAdmin;
+  final int? currentBranchId;
 
-  const _MigrateDialog({required this.inquiryGroup});
+  const _MigrateDialog({
+    required this.inquiryGroup,
+    this.isSuperAdmin = false,
+    this.currentBranchId,
+  });
 
   @override
   State<_MigrateDialog> createState() => _MigrateDialogState();
@@ -499,14 +522,78 @@ class _MigrateDialogState extends State<_MigrateDialog> {
   bool _submitting = false;
   List<GroupModel> _groups = [];
 
+  List<BranchModel> _branches = [];
+  BranchModel? _selectedBranch;
+  String? _branchError;
+  bool _loadingBranches = false;
+  bool _loadingGroups = false;
+
   @override
   void initState() {
     super.initState();
-    final s = context.read<GroupBloc>().state;
-    if (s is GroupLoaded) _groups = s.groups;
+    if (widget.isSuperAdmin) {
+      _loadBranches();
+    } else {
+      final s = context.read<GroupBloc>().state;
+      if (s is GroupLoaded) _groups = s.groups;
+    }
+  }
+
+  Future<void> _loadBranches() async {
+    setState(() => _loadingBranches = true);
+    final (branches, failure) = await getIt<BranchRepository>().getAll();
+    if (!mounted) return;
+    setState(() {
+      _loadingBranches = false;
+      _branches = branches ?? [];
+      _branchError = failure?.message;
+    });
+    // Default to the branch currently in view — the common case.
+    final current =
+        _branches.where((b) => b.id == widget.currentBranchId).firstOrNull;
+    if (current != null) await _selectBranch(current);
+  }
+
+  Future<void> _selectBranch(BranchModel branch) async {
+    setState(() {
+      _selectedBranch = branch;
+      _selectedGroup = null;
+      _groups = [];
+      _branchError = null;
+      _groupError = null;
+      _loadingGroups = true;
+    });
+    final (groups, failure) =
+        await getIt<GroupRepository>().getAllForBranch(branch.id);
+    // Ignore a stale response if the user switched branches meanwhile.
+    if (!mounted || _selectedBranch?.id != branch.id) return;
+    setState(() {
+      _loadingGroups = false;
+      _groups = groups ?? [];
+      _groupError = failure?.message;
+    });
+  }
+
+  Future<void> _pickBranch() async {
+    final picked = await showModalBottomSheet<BranchModel>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _BranchPickerSheet(
+        branches: _branches,
+        selectedId: _selectedBranch?.id,
+      ),
+    );
+    if (picked != null && mounted && picked.id != _selectedBranch?.id) {
+      await _selectBranch(picked);
+    }
   }
 
   Future<void> _pickGroup() async {
+    if (widget.isSuperAdmin && (_selectedBranch == null || _loadingGroups)) {
+      return;
+    }
     final picked = await showModalBottomSheet<GroupModel>(
       context: context,
       isScrollControlled: true,
@@ -529,6 +616,8 @@ class _MigrateDialogState extends State<_MigrateDialog> {
   @override
   Widget build(BuildContext context) {
     return BlocListener<GroupBloc, GroupState>(
+      // Super-admins load groups per picked branch instead.
+      listenWhen: (_, __) => !widget.isSuperAdmin,
       listener: (context, state) {
         if (state is GroupLoaded) setState(() => _groups = state.groups);
       },
@@ -599,7 +688,10 @@ class _MigrateDialogState extends State<_MigrateDialog> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '$count ta kutayotgan so\'rov o\'quvchiga aylantiriladi.',
+                            _selectedBranch != null &&
+                                    _selectedBranch!.id != widget.currentBranchId
+                                ? '$count ta kutayotgan so\'rov "${_selectedBranch!.name}" filialidagi guruhga o\'quvchi sifatida qo\'shiladi.'
+                                : '$count ta kutayotgan so\'rov o\'quvchiga aylantiriladi.',
                             style: TextStyle(
                                 fontSize: 13, color: AppColors.neutral700),
                           ),
@@ -609,6 +701,70 @@ class _MigrateDialogState extends State<_MigrateDialog> {
                   );
                 },
               ),
+              if (widget.isSuperAdmin) ...[
+                const SizedBox(height: 20),
+                Text('Filial',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.neutral700)),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: _loadingBranches ? null : _pickBranch,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceLight,
+                      border: Border.all(
+                        color: _branchError != null
+                            ? AppColors.error
+                            : AppColors.neutral300,
+                        width: _branchError != null ? 1.5 : 1,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.business_rounded,
+                            color: _branchError != null
+                                ? AppColors.error
+                                : AppColors.neutral400),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _selectedBranch?.name ??
+                                (_loadingBranches
+                                    ? 'Yuklanmoqda...'
+                                    : 'Filialni tanlang'),
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: _selectedBranch != null
+                                  ? AppColors.neutral900
+                                  : AppColors.neutral400,
+                            ),
+                          ),
+                        ),
+                        _loadingBranches
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : Icon(Icons.arrow_drop_down_rounded,
+                                color: AppColors.neutral400),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_branchError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, left: 12),
+                    child: Text(_branchError!,
+                        style:
+                            TextStyle(color: AppColors.error, fontSize: 12)),
+                  ),
+              ],
               const SizedBox(height: 20),
               Text('Maqsad guruh',
                   style: TextStyle(
@@ -642,7 +798,12 @@ class _MigrateDialogState extends State<_MigrateDialog> {
                         child: Text(
                           _selectedGroup != null
                               ? '${_selectedGroup!.name} (${_selectedGroup!.teacherName})'
-                              : 'Guruhni tanlang',
+                              : _loadingGroups
+                                  ? 'Yuklanmoqda...'
+                                  : widget.isSuperAdmin &&
+                                          _selectedBranch == null
+                                      ? 'Avval filialni tanlang'
+                                      : 'Guruhni tanlang',
                           style: TextStyle(
                             fontSize: 16,
                             color: _selectedGroup != null
@@ -708,6 +869,10 @@ class _MigrateDialogState extends State<_MigrateDialog> {
   }
 
   void _submit() {
+    if (widget.isSuperAdmin && _selectedBranch == null) {
+      setState(() => _branchError = 'Filialni tanlang');
+      return;
+    }
     if (_selectedGroup == null) {
       setState(() => _groupError = 'Guruhni tanlang');
       return;
@@ -720,6 +885,83 @@ class _MigrateDialogState extends State<_MigrateDialog> {
           ),
         );
     Navigator.pop(context);
+  }
+}
+
+class _BranchPickerSheet extends StatelessWidget {
+  final List<BranchModel> branches;
+  final int? selectedId;
+
+  const _BranchPickerSheet({required this.branches, this.selectedId});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 40,
+          height: 4,
+          margin: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.neutral300,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 8, 12),
+          child: Row(
+            children: [
+              Text('Filialni tanlang',
+                  style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.neutral900)),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        ),
+        LimitedBox(
+          maxHeight: 360,
+          child: branches.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Text('Filial topilmadi',
+                        style: TextStyle(color: AppColors.neutral500)),
+                  ),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: branches.length,
+                  itemBuilder: (_, i) {
+                    final branch = branches[i];
+                    return ListTile(
+                      onTap: () => Navigator.pop(context, branch),
+                      leading: Icon(Icons.business_rounded,
+                          color: AppColors.primary),
+                      title: Text(branch.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: branch.address != null
+                          ? Text(branch.address!,
+                              style: TextStyle(
+                                  fontSize: 12, color: AppColors.neutral500))
+                          : null,
+                      trailing: selectedId == branch.id
+                          ? Icon(Icons.check_circle_rounded,
+                              color: AppColors.primary)
+                          : null,
+                    );
+                  },
+                ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
   }
 }
 
