@@ -25,6 +25,7 @@ class ExpenseFormDialog extends StatefulWidget {
 
 class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
   final _formKey = GlobalKey<FormState>();
+  int _formVersion = 0;
   late final TextEditingController _titleController;
   late final TextEditingController _amountController;
   final FocusNode _titleFocusNode = FocusNode();
@@ -189,11 +190,13 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
         } catch (_) {}
 
         // Reset and clear all fields explicitly
-        _titleController.clear();
-        _amountController.clear();
-        _formKey.currentState?.reset();
+        _titleController.value = TextEditingValue.empty;
+        _amountController.value = TextEditingValue.empty;
+        _titleController.text = '';
+        _amountController.text = '';
 
         setState(() {
+          _formVersion++;
           _selectedDate = DateTime.now();
           _selectedCategoryId = null;
           _toastMessage = 'Xarajat muvaffaqiyatli saqlandi!';
@@ -279,6 +282,7 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
             26,
           ),
           child: SingleChildScrollView(
+            key: ValueKey('expense_form_scroll_$_formVersion'),
             child: Form(
               key: _formKey,
               child: Column(
