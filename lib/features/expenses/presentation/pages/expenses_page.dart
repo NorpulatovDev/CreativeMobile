@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -45,6 +46,9 @@ class _ExpensesViewState extends State<_ExpensesView> {
   final DateFormat _dayFormat = DateFormat('dd.MM.yyyy');
   final DateFormat _monthFormat = DateFormat('MMMM yyyy');
 
+  final Set<int> _selectedIds = {};
+  bool get _isSelectionMode => _selectedIds.isNotEmpty;
+
   Color _parseHex(String? hex) {
     if (hex == null || hex.isEmpty) return AppColors.primary;
     try {
@@ -53,6 +57,105 @@ class _ExpensesViewState extends State<_ExpensesView> {
     } catch (_) {
       return AppColors.primary;
     }
+  }
+
+  void _toggleSelection(int id) {
+    HapticFeedback.lightImpact();
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  void _clearSelection() {
+    setState(() => _selectedIds.clear());
+  }
+
+  void _selectAll(List<ExpenseModel> expenses) {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      if (_selectedIds.length == expenses.length) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds.addAll(expenses.map((e) => e.id));
+      }
+    });
+  }
+
+  void _confirmDeleteSelected(BuildContext context) {
+    final bloc = context.read<ExpenseBloc>();
+    final count = _selectedIds.length;
+    final idsToDelete = _selectedIds.toList();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.errorLight,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.delete_outline_rounded,
+                  color: AppColors.error, size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Xarajatlarni o\'chirish',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Text(
+          'Tanlangan $count ta xarajatni o\'chirmoqchimisiz? Bu amalni ortga qaytarib bo\'lmaydi.',
+          style: const TextStyle(
+            color: AppColors.neutral700,
+            fontSize: 15,
+            height: 1.4,
+          ),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            child: const Text(
+              'Bekor qilish',
+              style: TextStyle(
+                color: AppColors.neutral600,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _clearSelection();
+              bloc.add(DeleteMultipleExpensesEvent(idsToDelete));
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.error,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              '$count tani o\'chirish',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showAddExpense(BuildContext context) {
@@ -159,6 +262,7 @@ class _ExpensesViewState extends State<_ExpensesView> {
   }
 
   void _onPrevious(BuildContext context, String period, DateTime current) {
+    if (_isSelectionMode) _clearSelection();
     DateTime nextDate;
     if (period == 'daily') {
       nextDate = current.subtract(const Duration(days: 1));
@@ -171,6 +275,7 @@ class _ExpensesViewState extends State<_ExpensesView> {
   }
 
   void _onNext(BuildContext context, String period, DateTime current) {
+    if (_isSelectionMode) _clearSelection();
     DateTime nextDate;
     if (period == 'daily') {
       nextDate = current.add(const Duration(days: 1));
@@ -183,6 +288,7 @@ class _ExpensesViewState extends State<_ExpensesView> {
   }
 
   void _onToday(BuildContext context, String period) {
+    if (_isSelectionMode) _clearSelection();
     context.read<ExpenseBloc>().add(ChangeExpenseDateEvent(DateTime.now()));
   }
 
@@ -212,130 +318,181 @@ class _ExpensesViewState extends State<_ExpensesView> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
-      appBar: AppBar(
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            const Text(
-              'Xarajatlar',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 20,
-                letterSpacing: -0.3,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEC4899).withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'Super Admin',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFFEC4899),
-                  letterSpacing: 0.3,
-                ),
-              ),
-            ),
-          ],
+  PreferredSizeWidget _buildAppBar(BuildContext context, List<ExpenseModel> expenses) {
+    if (_isSelectionMode) {
+      final allSelected = _selectedIds.length == expenses.length && expenses.isNotEmpty;
+
+      return AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded, color: AppColors.neutral800),
+          tooltip: 'Bekor qilish',
+          onPressed: _clearSelection,
+        ),
+        title: Text(
+          '${_selectedIds.length} ta tanlandi',
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+            color: AppColors.neutral900,
+          ),
         ),
         actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 12),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
+          IconButton(
+            icon: Icon(
+              allSelected
+                  ? Icons.deselect_rounded
+                  : Icons.select_all_rounded,
+              color: AppColors.primary,
             ),
-            child: IconButton(
-              tooltip: 'Kategoriyalar',
-              icon: const Icon(Icons.category_rounded,
-                  color: AppColors.primary, size: 22),
-              onPressed: () {
-                context.push(Routes.expenseCategories);
-              },
+            tooltip: allSelected ? 'Tanlovni bekor qilish' : 'Barchasini tanlash',
+            onPressed: () => _selectAll(expenses),
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.delete_outline_rounded,
+              color: AppColors.error,
+            ),
+            tooltip: 'Tanlanganlarni o\'chirish',
+            onPressed: () => _confirmDeleteSelected(context),
+          ),
+          const SizedBox(width: 4),
+        ],
+        backgroundColor: AppColors.surfaceLight,
+        elevation: 1,
+      );
+    }
+
+    return AppBar(
+      titleSpacing: 0,
+      title: Row(
+        children: [
+          const Text(
+            'Xarajatlar',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 20,
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEC4899).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              'Super Admin',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFFEC4899),
+                letterSpacing: 0.3,
+              ),
             ),
           ),
         ],
-        backgroundColor: AppColors.surfaceLight,
-        elevation: 0,
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddExpense(context),
-        backgroundColor: AppColors.primary,
-        elevation: 3,
-        icon: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
-        label: const Text(
-          'Xarajat qo\'shish',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-            fontSize: 15,
+      actions: [
+        Container(
+          margin: const EdgeInsets.only(right: 12),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: IconButton(
+            tooltip: 'Kategoriyalar',
+            icon: const Icon(Icons.category_rounded,
+                color: AppColors.primary, size: 22),
+            onPressed: () {
+              context.push(Routes.expenseCategories);
+            },
           ),
         ),
-      ),
-      body: BlocConsumer<ExpenseBloc, ExpenseState>(
-        listener: (context, state) {
-          if (state is ExpenseActionSuccess) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    const Icon(Icons.check_circle_rounded,
-                        color: Colors.white, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(state.message)),
-                  ],
-                ),
-                backgroundColor: AppColors.success,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+      ],
+      backgroundColor: AppColors.surfaceLight,
+      elevation: 0,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocConsumer<ExpenseBloc, ExpenseState>(
+      listener: (context, state) {
+        if (state is ExpenseActionSuccess) {
+          _clearSelection();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle_rounded,
+                      color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(state.message)),
+                ],
               ),
-            );
-          } else if (state is ExpenseError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    const Icon(Icons.error_outline_rounded,
-                        color: Colors.white, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(state.message)),
-                  ],
-                ),
-                backgroundColor: AppColors.error,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        } else if (state is ExpenseError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded,
+                      color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(state.message)),
+                ],
               ),
-            );
-          }
-        },
-        builder: (context, state) {
-          String currentPeriod = 'monthly';
-          DateTime selectedDate = DateTime.now();
-          List<ExpenseModel> expenses = [];
-          ExpenseSummaryModel? summary;
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        }
+      },
+      builder: (context, state) {
+        String currentPeriod = 'monthly';
+        DateTime selectedDate = DateTime.now();
+        List<ExpenseModel> expenses = [];
+        ExpenseSummaryModel? summary;
 
-          if (state is ExpenseLoaded) {
-            currentPeriod = state.currentPeriod;
-            selectedDate = state.selectedDate;
-            expenses = state.expenses;
-            summary = state.summary;
-          }
+        if (state is ExpenseLoaded) {
+          currentPeriod = state.currentPeriod;
+          selectedDate = state.selectedDate;
+          expenses = state.expenses;
+          summary = state.summary;
+        }
 
-          final isToday = _isCurrentDate(currentPeriod, selectedDate);
+        final isToday = _isCurrentDate(currentPeriod, selectedDate);
 
-          return RefreshIndicator(
+        return Scaffold(
+          backgroundColor: AppColors.backgroundLight,
+          appBar: _buildAppBar(context, expenses),
+          floatingActionButton: _isSelectionMode
+              ? null
+              : FloatingActionButton.extended(
+                  onPressed: () => _showAddExpense(context),
+                  backgroundColor: AppColors.primary,
+                  elevation: 3,
+                  icon: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+                  label: const Text(
+                    'Xarajat qo\'shish',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+          body: RefreshIndicator(
             onRefresh: () async {
+              _clearSelection();
               context.read<ExpenseBloc>().add(
                     LoadExpensesEvent(
                         period: currentPeriod, date: selectedDate),
@@ -350,7 +507,7 @@ class _ExpensesViewState extends State<_ExpensesView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Modern Tab Capsule (Kunlik / Haftalik / Oylik)
+                        // Period Tab Capsule (Kunlik / Haftalik / Oylik)
                         Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
@@ -362,23 +519,32 @@ class _ExpensesViewState extends State<_ExpensesView> {
                               _PeriodTab(
                                 label: 'Kunlik',
                                 isSelected: currentPeriod == 'daily',
-                                onTap: () => context.read<ExpenseBloc>().add(
-                                      const ChangeExpensePeriodEvent('daily'),
-                                    ),
+                                onTap: () {
+                                  if (_isSelectionMode) _clearSelection();
+                                  context.read<ExpenseBloc>().add(
+                                        const ChangeExpensePeriodEvent('daily'),
+                                      );
+                                },
                               ),
                               _PeriodTab(
                                 label: 'Haftalik',
                                 isSelected: currentPeriod == 'weekly',
-                                onTap: () => context.read<ExpenseBloc>().add(
-                                      const ChangeExpensePeriodEvent('weekly'),
-                                    ),
+                                onTap: () {
+                                  if (_isSelectionMode) _clearSelection();
+                                  context.read<ExpenseBloc>().add(
+                                        const ChangeExpensePeriodEvent('weekly'),
+                                      );
+                                },
                               ),
                               _PeriodTab(
                                 label: 'Oylik',
                                 isSelected: currentPeriod == 'monthly',
-                                onTap: () => context.read<ExpenseBloc>().add(
-                                      const ChangeExpensePeriodEvent('monthly'),
-                                    ),
+                                onTap: () {
+                                  if (_isSelectionMode) _clearSelection();
+                                  context.read<ExpenseBloc>().add(
+                                        const ChangeExpensePeriodEvent('monthly'),
+                                      );
+                                },
                               ),
                             ],
                           ),
@@ -563,10 +729,21 @@ class _ExpensesViewState extends State<_ExpensesView> {
                         (context, index) {
                           final expense = expenses[index];
                           final color = _parseHex(expense.categoryColor);
+                          final isSelected = _selectedIds.contains(expense.id);
 
                           return _ExpenseItemCard(
                             expense: expense,
                             categoryColor: color,
+                            isSelected: isSelected,
+                            isSelectionMode: _isSelectionMode,
+                            onTap: () {
+                              if (_isSelectionMode) {
+                                _toggleSelection(expense.id);
+                              }
+                            },
+                            onLongPress: () {
+                              _toggleSelection(expense.id);
+                            },
                             onEdit: () => _showEditExpense(context, expense),
                             onDelete: () =>
                                 _confirmDeleteExpense(context, expense),
@@ -578,9 +755,9 @@ class _ExpensesViewState extends State<_ExpensesView> {
                   ),
               ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -633,16 +810,24 @@ class _PeriodTab extends StatelessWidget {
   }
 }
 
-/// Robust, beautiful Expense card with ZERO overflow issues
+/// Robust, beautiful Expense card with zero overflow, multi-selection & long-press support
 class _ExpenseItemCard extends StatelessWidget {
   final ExpenseModel expense;
   final Color categoryColor;
+  final bool isSelected;
+  final bool isSelectionMode;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _ExpenseItemCard({
     required this.expense,
     required this.categoryColor,
+    required this.isSelected,
+    required this.isSelectionMode,
+    required this.onTap,
+    required this.onLongPress,
     required this.onEdit,
     required this.onDelete,
   });
@@ -652,100 +837,133 @@ class _ExpenseItemCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
+        color: isSelected
+            ? AppColors.primary.withValues(alpha: 0.06)
+            : AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: AppColors.neutral200.withValues(alpha: 0.7),
+          color: isSelected
+              ? AppColors.primary
+              : AppColors.neutral200.withValues(alpha: 0.7),
+          width: isSelected ? 2 : 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 8,
+            color: isSelected
+                ? AppColors.primary.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.02),
+            blurRadius: isSelected ? 12 : 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          children: [
-            // Category Icon Badge
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: categoryColor.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                Icons.payments_rounded,
-                color: categoryColor,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 12),
-
-            // Left side details (Title + Category Badge + Date)
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    expense.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                      color: AppColors.neutral900,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                // Selection checkbox icon (when in selection mode)
+                if (isSelectionMode) ...[
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 24,
+                    height: 24,
+                    margin: const EdgeInsets.only(right: 12),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.primary : Colors.transparent,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isSelected ? AppColors.primary : AppColors.neutral400,
+                        width: 2,
+                      ),
                     ),
+                    child: isSelected
+                        ? const Icon(Icons.check_rounded,
+                            size: 16, color: Colors.white)
+                        : null,
                   ),
-                  const SizedBox(height: 5),
-                  Row(
+                ],
+
+                // Category Icon Badge
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: categoryColor.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    Icons.payments_rounded,
+                    color: categoryColor,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Left side details (Title + Category Badge + Date)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Flexible(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: categoryColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            expense.categoryName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: categoryColor,
-                            ),
-                          ),
+                      Text(
+                        expense.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.neutral900,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '•  ${DateFormat('dd.MM.yyyy').format(expense.expenseDate)}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.neutral500,
-                          fontWeight: FontWeight.w500,
-                        ),
+                      const SizedBox(height: 5),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: categoryColor.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                expense.categoryName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: categoryColor,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '•  ${DateFormat('dd.MM.yyyy').format(expense.expenseDate)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.neutral500,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
+                ),
+                const SizedBox(width: 10),
 
-            // Right side details (Amount + More Actions Menu)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
+                // Right side details (Amount)
                 Text(
                   '${formatAmount(expense.amount)} so\'m',
                   style: const TextStyle(
@@ -755,63 +973,65 @@ class _ExpenseItemCard extends StatelessWidget {
                     letterSpacing: -0.3,
                   ),
                 ),
-              ],
-            ),
 
-            // More Menu Button
-            SizedBox(
-              width: 32,
-              child: PopupMenuButton<String>(
-                padding: EdgeInsets.zero,
-                icon: const Icon(
-                  Icons.more_vert_rounded,
-                  size: 20,
-                  color: AppColors.neutral400,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                onSelected: (action) {
-                  if (action == 'edit') {
-                    onEdit();
-                  } else if (action == 'delete') {
-                    onDelete();
-                  }
-                },
-                itemBuilder: (ctx) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit_outlined,
-                            size: 18, color: AppColors.neutral700),
-                        SizedBox(width: 10),
-                        Text('Tahrirlash',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete_outline_rounded,
-                            size: 18, color: AppColors.error),
-                        SizedBox(width: 10),
-                        Text(
-                          'O\'chirish',
-                          style: TextStyle(
-                            color: AppColors.error,
-                            fontWeight: FontWeight.w600,
+                // More Menu Button (only when not in selection mode)
+                if (!isSelectionMode) ...[
+                  SizedBox(
+                    width: 32,
+                    child: PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(
+                        Icons.more_vert_rounded,
+                        size: 20,
+                        color: AppColors.neutral400,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      onSelected: (action) {
+                        if (action == 'edit') {
+                          onEdit();
+                        } else if (action == 'delete') {
+                          onDelete();
+                        }
+                      },
+                      itemBuilder: (ctx) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_outlined,
+                                  size: 18, color: AppColors.neutral700),
+                              SizedBox(width: 10),
+                              Text('Tahrirlash',
+                                  style: TextStyle(fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline_rounded,
+                                  size: 18, color: AppColors.error),
+                              SizedBox(width: 10),
+                              Text(
+                                'O\'chirish',
+                                style: TextStyle(
+                                  color: AppColors.error,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
                 ],
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

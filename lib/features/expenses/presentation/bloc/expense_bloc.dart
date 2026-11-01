@@ -60,6 +60,13 @@ class DeleteExpenseEvent extends ExpenseEvent {
   List<Object?> get props => [id];
 }
 
+class DeleteMultipleExpensesEvent extends ExpenseEvent {
+  final List<int> ids;
+  const DeleteMultipleExpensesEvent(this.ids);
+  @override
+  List<Object?> get props => [ids];
+}
+
 // States
 abstract class ExpenseState extends Equatable {
   const ExpenseState();
@@ -129,6 +136,7 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
     on<CreateExpenseEvent>(_onCreateExpense);
     on<UpdateExpenseEvent>(_onUpdateExpense);
     on<DeleteExpenseEvent>(_onDeleteExpense);
+    on<DeleteMultipleExpensesEvent>(_onDeleteMultipleExpenses);
   }
 
   Future<void> _onLoadExpenses(
@@ -225,6 +233,33 @@ class ExpenseBloc extends Bloc<ExpenseEvent, ExpenseState> {
     } else {
       emit(const ExpenseActionSuccess('Xarajat o\'chirildi'));
       add(LoadExpensesEvent(period: _currentPeriod, date: _selectedDate));
+    }
+  }
+
+  Future<void> _onDeleteMultipleExpenses(
+    DeleteMultipleExpensesEvent event,
+    Emitter<ExpenseState> emit,
+  ) async {
+    if (event.ids.isEmpty) return;
+    emit(ExpenseLoading());
+
+    int deletedCount = 0;
+    String? lastError;
+
+    for (final id in event.ids) {
+      final failure = await _repository.deleteExpense(id);
+      if (failure != null) {
+        lastError = failure.message;
+      } else {
+        deletedCount++;
+      }
+    }
+
+    if (deletedCount > 0) {
+      emit(ExpenseActionSuccess('$deletedCount ta xarajat o\'chirildi'));
+      add(LoadExpensesEvent(period: _currentPeriod, date: _selectedDate));
+    } else if (lastError != null) {
+      emit(ExpenseError(lastError));
     }
   }
 }
