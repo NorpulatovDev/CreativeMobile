@@ -28,6 +28,8 @@ import '../../features/payments/presentation/dialogs/payment_form_dialog.dart';
 import '../../features/payments/presentation/pages/payments_page.dart';
 import '../../features/permissions/presentation/pages/permissions_page.dart';
 import '../../features/sms_templates/presentation/pages/sms_templates_page.dart';
+import '../../features/expenses/presentation/pages/expenses_page.dart';
+import '../../features/expenses/presentation/pages/expense_categories_page.dart';
 import '../../features/reports/presentation/pages/payment_status_page.dart';
 import '../../features/reports/presentation/pages/reports_page.dart';
 import '../../features/students/presentation/bloc/student_bloc.dart';
@@ -163,6 +165,16 @@ class AppRouter {
                 name: 'sms-templates',
                 builder: (context, state) => const SmsTemplatesPage(),
               ),
+              GoRoute(
+                path: Routes.expenses,
+                name: 'expenses',
+                builder: (context, state) => const ExpensesPage(),
+              ),
+              GoRoute(
+                path: Routes.expenseCategories,
+                name: 'expense-categories',
+                builder: (context, state) => const ExpenseCategoriesPage(),
+              ),
             ],
           ),
           // Branch 1 — Groups
@@ -238,8 +250,11 @@ class AppRouter {
       return loc == Routes.login ? null : Routes.login;
     }
 
-    // Only super-admins may edit SMS templates.
-    if (loc == Routes.smsTemplates && !authState.user.isSuperAdmin) {
+    // Only super-admins may edit SMS templates or access expenses.
+    if ((loc == Routes.smsTemplates ||
+            loc == Routes.expenses ||
+            loc == Routes.expenseCategories) &&
+        !authState.user.isSuperAdmin) {
       return Routes.home;
     }
 
@@ -817,6 +832,15 @@ class _BranchDrawerState extends State<_BranchDrawer> {
                 context.push(Routes.smsTemplates);
               },
             ),
+            _DrawerNavItem(
+              icon: Icons.payments_rounded,
+              label: 'Xarajatlar',
+              color: const Color(0xFFF59E0B),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push(Routes.expenses);
+              },
+            ),
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -1309,6 +1333,10 @@ class _PageGrid extends StatelessWidget {
   }
 
   List<_PageData> _buildItems(BuildContext context) {
+    final authState = context.read<AuthBloc>().state;
+    final isSuperAdmin =
+        authState is AuthAuthenticated && authState.user.isSuperAdmin;
+
     return [
       _PageData(icon: Icons.contact_phone_rounded, label: "So'rovlar",         color: const Color(0xFF3B82F6), route: Routes.inquiries),
       _PageData(icon: Icons.groups_rounded,         label: "Guruhlar",          color: AppColors.primary,       route: Routes.groups,   pushRoute: false),
@@ -1319,6 +1347,8 @@ class _PageGrid extends StatelessWidget {
       _PageData(icon: Icons.sms_rounded,            label: "SMS tarixi",        color: const Color(0xFF6366F1), route: Routes.smsHistory),
       _PageData(icon: Icons.person_rounded,         label: "O'qituvchilar",     color: AppColors.warning,       route: Routes.teachers),
       _PageData(icon: Icons.add_card_rounded,       label: "To'lov qo'shish",   color: const Color(0xFF8B5CF6), onTap: _showQuickPayment),
+      if (isSuperAdmin)
+        _PageData(icon: Icons.payments_rounded,     label: "Xarajatlar",        color: const Color(0xFFF59E0B), route: Routes.expenses),
     ];
   }
 

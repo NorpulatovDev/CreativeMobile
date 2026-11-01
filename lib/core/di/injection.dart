@@ -89,6 +89,13 @@ import '../../features/reports/data/datasources/report_local_datasource.dart';
 import '../../features/reports/data/repositories/report_repository.dart';
 import '../../features/reports/presentation/bloc/report_bloc.dart';
 
+// Expenses
+import '../../features/expenses/data/datasources/expense_local_datasource.dart';
+import '../../features/expenses/data/datasources/expense_remote_datasource.dart';
+import '../../features/expenses/data/repositories/expense_repository.dart';
+import '../../features/expenses/presentation/bloc/expense_bloc.dart';
+import '../../features/expenses/presentation/bloc/expense_category_bloc.dart';
+
 // Inquiries
 import '../../features/inquiries/data/datasources/inquiry_remote_datasource.dart';
 import '../../features/inquiries/data/datasources/inquiry_local_datasource.dart';
@@ -343,6 +350,20 @@ Future<void> configureDependencies() async {
   final branchCubit = BranchSelectionCubit(getIt());
   await branchCubit.init();
   getIt.registerSingleton<BranchSelectionCubit>(branchCubit);
+
+  // Expenses Feature (super admin only, offline read-only)
+  final expenseLocal = ExpenseLocalDataSource();
+  await expenseLocal.initialize();
+  getIt.registerSingleton<ExpenseLocalDataSource>(expenseLocal);
+
+  getIt.registerSingleton<ExpenseRemoteDataSource>(
+    ExpenseRemoteDataSourceImpl(getIt()),
+  );
+  getIt.registerSingleton<ExpenseRepository>(
+    ExpenseRepositoryImpl(getIt(), getIt(), getIt()),
+  );
+  getIt.registerFactory<ExpenseBloc>(() => ExpenseBloc(getIt()));
+  getIt.registerFactory<ExpenseCategoryBloc>(() => ExpenseCategoryBloc(getIt()));
 
   // Router
   getIt.registerSingleton<AppRouter>(AppRouter(getIt(), getIt()));
