@@ -21,15 +21,20 @@ class CategoryBreakdownCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasBreakdown = summary.byCategory.isNotEmpty;
+
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.surfaceLight,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: AppColors.neutral200.withValues(alpha: 0.8),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
             offset: const Offset(0, 3),
           ),
         ],
@@ -37,6 +42,7 @@ class CategoryBreakdownCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Total Spent Section
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -48,12 +54,12 @@ class CategoryBreakdownCard extends StatelessWidget {
                     'JAMI XARAJAT',
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                       color: AppColors.neutral400,
                       letterSpacing: 1.2,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
@@ -61,18 +67,18 @@ class CategoryBreakdownCard extends StatelessWidget {
                       Text(
                         formatAmount(summary.totalAmount),
                         style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
                           color: AppColors.neutral900,
-                          letterSpacing: -0.5,
+                          letterSpacing: -0.6,
                         ),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 5),
                       const Text(
                         "so'm",
                         style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
                           color: AppColors.neutral500,
                         ),
                       ),
@@ -81,92 +87,112 @@ class CategoryBreakdownCard extends StatelessWidget {
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  '${summary.totalExpensesCount} ta xarajat',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.receipt_rounded,
+                      size: 14,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      '${summary.totalExpensesCount} ta xarajat',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          if (summary.byCategory.isNotEmpty) ...[
+
+          if (hasBreakdown) ...[
+            const SizedBox(height: 18),
+            const Divider(height: 1, color: AppColors.neutral200),
             const SizedBox(height: 16),
-            const Divider(height: 1),
-            const SizedBox(height: 14),
-            const Text(
-              'Kategoriyalar bo\'yicha taqsimot',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: AppColors.neutral700,
+
+            // Segmented Progress Bar (Multi-color bar)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                height: 8,
+                child: Row(
+                  children: summary.byCategory.map((cat) {
+                    final color = _parseHex(cat.categoryColor);
+                    final flex = (cat.percentage * 10).round().clamp(1, 1000);
+                    return Expanded(
+                      flex: flex,
+                      child: Container(
+                        color: color,
+                        margin: const EdgeInsets.symmetric(horizontal: 0.5),
+                      ),
+                    );
+                  }).toList(),
+                ),
               ),
             ),
-            const SizedBox(height: 10),
+
+            const SizedBox(height: 16),
+
+            // Category breakdown rows
             ...summary.byCategory.map((cat) {
               final color = _parseHex(cat.categoryColor);
-              final progress = (cat.percentage / 100.0).clamp(0.0, 1.0);
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 10,
-                              height: 10,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
                               cat.categoryName,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.neutral800,
                               ),
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '(${cat.percentage.toStringAsFixed(1)}%)',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.neutral500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Text(
-                          '${formatAmount(cat.totalAmount)} so\'m',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 6),
+                          Text(
+                            '(${cat.percentage.toStringAsFixed(1)}%)',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.neutral500,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 6,
-                        backgroundColor: AppColors.neutral200,
-                        valueColor: AlwaysStoppedAnimation<Color>(color),
+                    Text(
+                      '${formatAmount(cat.totalAmount)} so\'m',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.neutral900,
+                        letterSpacing: -0.2,
                       ),
                     ),
                   ],
@@ -179,4 +205,3 @@ class CategoryBreakdownCard extends StatelessWidget {
     );
   }
 }
-

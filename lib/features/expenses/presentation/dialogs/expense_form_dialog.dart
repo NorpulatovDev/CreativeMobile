@@ -27,11 +27,13 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
   late final TextEditingController _titleController;
   late final TextEditingController _amountController;
   final FocusNode _titleFocusNode = FocusNode();
+  final FocusNode _amountFocusNode = FocusNode();
   late DateTime _selectedDate;
   int? _selectedCategoryId;
 
   String? _toastMessage;
   Timer? _toastTimer;
+  bool _isSubmitting = false;
 
   final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
   final DateFormat _displayDateFormat = DateFormat('dd.MM.yyyy');
@@ -56,7 +58,18 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
     _titleController.dispose();
     _amountController.dispose();
     _titleFocusNode.dispose();
+    _amountFocusNode.dispose();
     super.dispose();
+  }
+
+  Color _parseHex(String? hex) {
+    if (hex == null || hex.isEmpty) return AppColors.primary;
+    try {
+      final clean = hex.replaceAll('#', '');
+      return Color(int.parse('0xFF$clean'));
+    } catch (_) {
+      return AppColors.primary;
+    }
   }
 
   Future<void> _pickDate() async {
@@ -71,6 +84,7 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
             colorScheme: const ColorScheme.light(
               primary: AppColors.primary,
               onPrimary: Colors.white,
+              surface: Colors.white,
             ),
           ),
           child: child!,
@@ -82,18 +96,38 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
     }
   }
 
-  void _showAddCategory() {
-    showDialog(
+  Future<void> _openCategoryPicker(List<ExpenseCategoryModel> categories) async {
+    final selected = await showModalBottomSheet<int?>(
       context: context,
-      builder: (ctx) => BlocProvider(
-        create: (_) => getIt<ExpenseCategoryBloc>(),
-        child: const ExpenseCategoryFormDialog(),
-      ),
-    ).then((_) {
-      if (mounted) {
-        context.read<ExpenseCategoryBloc>().add(const LoadExpenseCategories());
-      }
-    });
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return _CategoryPickerBottomSheet(
+          categories: categories,
+          selectedCategoryId: _selectedCategoryId,
+          onAddNewCategory: () async {
+            final newCategory = await showDialog<ExpenseCategoryModel>(
+              context: sheetContext,
+              builder: (ctx) => const ExpenseCategoryFormDialog(),
+            );
+            if (newCategory != null && mounted) {
+              // Reload categories in parent bloc
+              context
+                  .read<ExpenseCategoryBloc>()
+                  .add(const LoadExpenseCategories());
+              // Auto-select newly created category and close picker
+              Navigator.of(sheetContext).pop(newCategory.id);
+            }
+          },
+        );
+      },
+    );
+
+    if (selected != null && mounted) {
+      setState(() {
+        _selectedCategoryId = selected == -1 ? null : selected;
+      });
+    }
   }
 
   void _submit() {
@@ -101,6 +135,8 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
 
     final rawAmountStr = amountDigits(_amountController.text);
     final amount = double.tryParse(rawAmountStr) ?? 0.0;
+
+    setState(() => _isSubmitting = true);
 
     final request = ExpenseRequest(
       title: _titleController.text.trim(),
@@ -119,13 +155,15 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
   }
 
   void _onSuccess(String message) {
+    setState(() => _isSubmitting = false);
+
     if (widget.expense != null) {
       // If editing existing expense, dismiss dialog
       Navigator.of(context).pop();
       return;
     }
 
-    // Adding new expense: keep dialog open, clear inputs, show success toast
+    // Adding new expense: keep dialog open, clear inputs, show success banner
     _titleController.clear();
     _amountController.clear();
     _formKey.currentState?.reset();
@@ -143,27 +181,32 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
       }
     });
 
-    // Re-focus title for instant next input
+    // Re-focus title for rapid continuous data entry
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _titleFocusNode.requestFocus();
     });
 
-    // Show floating snackbar
+    // Native toast feedback
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white),
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
               const SizedBox(width: 10),
-              Expanded(child: Text(message)),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
             ],
           ),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 3),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
       );
   }
@@ -171,38 +214,52 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.expense != null;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isCompact = screenWidth < 400;
 
     return BlocListener<ExpenseBloc, ExpenseState>(
       listener: (context, state) {
         if (state is ExpenseActionSuccess) {
           _onSuccess(state.message);
         } else if (state is ExpenseError) {
+          setState(() => _isSubmitting = false);
           ScaffoldMessenger.of(context)
             ..clearSnackBars()
             ..showSnackBar(
               SnackBar(
                 content: Row(
                   children: [
-                    const Icon(Icons.error_outline_rounded, color: Colors.white),
+                    const Icon(Icons.error_outline_rounded,
+                        color: Colors.white, size: 20),
                     const SizedBox(width: 10),
                     Expanded(child: Text(state.message)),
                   ],
                 ),
                 backgroundColor: AppColors.error,
                 behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
               ),
             );
         }
       },
       child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        insetPadding: EdgeInsets.symmetric(
+          horizontal: isCompact ? 12 : 20,
+          vertical: 24,
+        ),
         backgroundColor: AppColors.surfaceLight,
+        elevation: 10,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
+          constraints: const BoxConstraints(maxWidth: 540),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            padding: EdgeInsets.fromLTRB(
+              isCompact ? 18 : 26,
+              22,
+              isCompact ? 18 : 26,
+              26,
+            ),
             child: SingleChildScrollView(
               child: Form(
                 key: _formKey,
@@ -210,70 +267,122 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Header with title and close 'X'
+                    // Top Bar: Icon, Title and Close Button
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(
                           children: [
                             Container(
-                              width: 42,
-                              height: 42,
+                              width: 44,
+                              height: 44,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                gradient: LinearGradient(
+                                  colors: [
+                                    const Color(0xFFF59E0B),
+                                    const Color(0xFFF59E0B).withValues(alpha: 0.8),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
                                 borderRadius: BorderRadius.circular(14),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFF59E0B).withValues(alpha: 0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
                               ),
                               child: const Icon(
                                 Icons.payments_rounded,
-                                color: Color(0xFFF59E0B),
-                                size: 22,
+                                color: Colors.white,
+                                size: 24,
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Text(
-                              isEditing ? 'Xarajatni tahrirlash' : 'Yangi xarajat',
-                              style: const TextStyle(
-                                fontSize: 19,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.3,
-                              ),
+                            const SizedBox(width: 14),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isEditing ? 'Xarajatni tahrirlash' : 'Yangi xarajat',
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.4,
+                                    color: AppColors.neutral900,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  isEditing
+                                      ? 'Ma\'lumotlarni o\'zgartiring'
+                                      : 'Xarajat tafsilotlarini kiriting',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.neutral500,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                        IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          tooltip: 'Yopish',
-                          icon: const Icon(Icons.close_rounded, color: AppColors.neutral500),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () => Navigator.of(context).pop(),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppColors.neutral100,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close_rounded,
+                                size: 18,
+                                color: AppColors.neutral600,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
 
-                    // In-dialog success toast
+                    // Success Feedback Card (Inside Dialog)
                     if (_toastMessage != null) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 300),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         decoration: BoxDecoration(
-                          color: AppColors.successLight,
-                          borderRadius: BorderRadius.circular(12),
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: AppColors.success.withValues(alpha: 0.5),
+                            color: const Color(0xFF10B981).withValues(alpha: 0.4),
                           ),
                         ),
                         child: Row(
                           children: [
-                            const Icon(
-                              Icons.check_circle_rounded,
-                              color: AppColors.success,
-                              size: 20,
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF10B981),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.check_rounded,
+                                color: Colors.white,
+                                size: 14,
+                              ),
                             ),
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: Text(
                                 _toastMessage!,
                                 style: const TextStyle(
-                                  color: AppColors.successDark,
+                                  color: Color(0xFF065F46),
                                   fontWeight: FontWeight.w700,
                                   fontSize: 13,
                                 ),
@@ -284,31 +393,49 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                       ),
                     ],
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 22),
 
                     // 1. Title Input
+                    const Text(
+                      'Xarajat nomi',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: _titleController,
                       focusNode: _titleFocusNode,
                       autofocus: !isEditing,
                       textInputAction: TextInputAction.next,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                       decoration: InputDecoration(
-                        labelText: 'Xarajat nomi *',
                         hintText: 'Masalan: Ofis ijarasi, Suv, Kanselyariya...',
-                        prefixIcon: const Icon(Icons.edit_note_rounded, color: AppColors.primary),
+                        hintStyle: const TextStyle(
+                          color: AppColors.neutral400,
+                          fontSize: 14,
+                          fontWeight: FontWeight.normal,
+                        ),
+                        prefixIcon: const Icon(Icons.edit_note_rounded,
+                            color: AppColors.primary, size: 22),
                         filled: true,
                         fillColor: AppColors.neutral50,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: AppColors.neutral300),
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: AppColors.neutral200),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide(color: AppColors.neutral300.withValues(alpha: 0.8)),
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: AppColors.neutral200),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
                           borderSide: const BorderSide(color: AppColors.primary, width: 2),
                         ),
                       ),
@@ -318,46 +445,67 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                         }
                         return null;
                       },
+                      onFieldSubmitted: (_) => _amountFocusNode.requestFocus(),
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
 
-                    // 2. Amount Input (formatted with space: 300 000)
+                    // 2. Amount Input
+                    const Text(
+                      'Summasi',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: _amountController,
+                      focusNode: _amountFocusNode,
                       keyboardType: TextInputType.number,
                       textInputAction: TextInputAction.done,
                       style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
                         color: AppColors.neutral900,
+                        letterSpacing: 0.5,
                       ),
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
                         ThousandsSeparatorInputFormatter(),
                       ],
                       decoration: InputDecoration(
-                        labelText: 'Summasi *',
                         hintText: '300 000',
-                        prefixIcon: const Icon(Icons.payments_outlined, color: AppColors.primary),
+                        hintStyle: const TextStyle(
+                          color: AppColors.neutral400,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        prefixIcon: const Icon(Icons.attach_money_rounded,
+                            color: AppColors.primary, size: 22),
                         suffixText: "so'm",
                         suffixStyle: const TextStyle(
                           fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.neutral600,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.neutral700,
                         ),
                         filled: true,
                         fillColor: AppColors.neutral50,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: AppColors.neutral300),
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: AppColors.neutral200),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide(color: AppColors.neutral300.withValues(alpha: 0.8)),
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: AppColors.neutral200),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
                           borderSide: const BorderSide(color: AppColors.primary, width: 2),
                         ),
                       ),
@@ -375,9 +523,18 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                       onFieldSubmitted: (_) => _submit(),
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
 
-                    // 3. Category Dropdown (optional, defaults to "Boshqa")
+                    // 3. Category Selector (Modern BottomSheet Trigger)
+                    const Text(
+                      'Kategoriya',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     BlocBuilder<ExpenseCategoryBloc, ExpenseCategoryState>(
                       builder: (context, state) {
                         List<ExpenseCategoryModel> categories = [];
@@ -385,106 +542,171 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                           categories = state.categories;
                         }
 
-                        return Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<int?>(
-                                value: _selectedCategoryId,
-                                decoration: InputDecoration(
-                                  labelText: 'Kategoriya (ixtiyoriy)',
-                                  hintText: 'Boshqa (standart)',
-                                  prefixIcon: const Icon(Icons.category_outlined, color: AppColors.primary),
-                                  filled: true,
-                                  fillColor: AppColors.neutral50,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                    borderSide: const BorderSide(color: AppColors.neutral300),
+                        // Determine selected category model
+                        ExpenseCategoryModel? selectedCategory;
+                        if (_selectedCategoryId != null) {
+                          for (final cat in categories) {
+                            if (cat.id == _selectedCategoryId) {
+                              selectedCategory = cat;
+                              break;
+                            }
+                          }
+                        }
+
+                        final selectedColor = selectedCategory != null
+                            ? _parseHex(selectedCategory.color)
+                            : const Color(0xFF64748B);
+
+                        final categoryTitle = selectedCategory != null
+                            ? selectedCategory.name
+                            : 'Boshqa (standart)';
+
+                        return InkWell(
+                          onTap: () => _openCategoryPicker(categories),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: AppColors.neutral50,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.neutral200),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: selectedColor.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                    borderSide: BorderSide(color: AppColors.neutral300.withValues(alpha: 0.8)),
+                                  child: Icon(
+                                    selectedCategory != null
+                                        ? Icons.label_rounded
+                                        : Icons.category_rounded,
+                                    size: 16,
+                                    color: selectedColor,
                                   ),
                                 ),
-                                items: [
-                                  const DropdownMenuItem<int?>(
-                                    value: null,
-                                    child: Text(
-                                      'Boshqa (standart)',
-                                      style: TextStyle(
-                                        color: AppColors.neutral600,
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    categoryTitle,
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: selectedCategory != null
+                                          ? AppColors.neutral900
+                                          : AppColors.neutral600,
                                     ),
                                   ),
-                                  ...categories.map((c) {
-                                    return DropdownMenuItem<int?>(
-                                      value: c.id,
-                                      child: Text(
-                                        c.name,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Tanlash',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.primary,
+                                        ),
                                       ),
-                                    );
-                                  }),
-                                ],
-                                onChanged: (val) {
-                                  setState(() => _selectedCategoryId = val);
-                                },
-                              ),
+                                      SizedBox(width: 4),
+                                      Icon(
+                                        Icons.keyboard_arrow_down_rounded,
+                                        size: 16,
+                                        color: AppColors.primary,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              onPressed: _showAddCategory,
-                              tooltip: 'Yangi kategoriya yaratish',
-                              icon: const Icon(
-                                Icons.add_circle_outline_rounded,
-                                color: AppColors.primary,
-                                size: 26,
-                              ),
-                            ),
-                          ],
+                          ),
                         );
                       },
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
 
                     // 4. Date Picker
+                    const Text(
+                      'Xarajat sanasi',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     InkWell(
                       onTap: _pickDate,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(16),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
                         decoration: BoxDecoration(
                           color: AppColors.neutral50,
-                          border: Border.all(color: AppColors.neutral300.withValues(alpha: 0.8)),
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.neutral200),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.calendar_today_rounded, size: 20, color: AppColors.primary),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Xarajat sanasi',
-                                  style: TextStyle(fontSize: 11, color: AppColors.neutral500),
-                                ),
-                                Text(
-                                  _displayDateFormat.format(_selectedDate),
-                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                                ),
-                              ],
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.calendar_month_rounded,
+                                size: 16,
+                                color: AppColors.primary,
+                              ),
                             ),
-                            const Spacer(),
-                            const Icon(Icons.edit_calendar_rounded, size: 18, color: AppColors.neutral400),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                _displayDateFormat.format(_selectedDate),
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.neutral900,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.neutral200.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                'O\'zgartirish',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.neutral700,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 28),
 
                     // Action buttons
                     Row(
@@ -492,17 +714,21 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                         Expanded(
                           flex: 1,
                           child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
+                            onPressed: _isSubmitting
+                                ? null
+                                : () => Navigator.of(context).pop(),
                             style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
                               side: const BorderSide(color: AppColors.neutral300),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16)),
                             ),
                             child: const Text(
                               'Yopish',
                               style: TextStyle(
                                 color: AppColors.neutral700,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
                               ),
                             ),
                           ),
@@ -511,26 +737,44 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                         Expanded(
                           flex: 2,
                           child: FilledButton(
-                            onPressed: _submit,
+                            onPressed: _isSubmitting ? null : _submit,
                             style: FilledButton.styleFrom(
                               backgroundColor: AppColors.primary,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              elevation: 2,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16)),
                             ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.add_rounded, color: Colors.white, size: 20),
-                                const SizedBox(width: 6),
-                                Text(
-                                  isEditing ? 'Saqlash' : 'Qo\'shish',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
+                            child: _isSubmitting
+                                ? const SizedBox(
+                                    height: 22,
+                                    width: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.white),
+                                    ),
+                                  )
+                                : Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        isEditing
+                                            ? Icons.check_rounded
+                                            : Icons.add_rounded,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        isEditing ? 'Saqlash' : 'Qo\'shish',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
-                            ),
                           ),
                         ),
                       ],
@@ -540,6 +784,168 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A modern bottom sheet that lets users select or create categories
+class _CategoryPickerBottomSheet extends StatelessWidget {
+  final List<ExpenseCategoryModel> categories;
+  final int? selectedCategoryId;
+  final VoidCallback onAddNewCategory;
+
+  const _CategoryPickerBottomSheet({
+    required this.categories,
+    required this.selectedCategoryId,
+    required this.onAddNewCategory,
+  });
+
+  Color _parseHex(String? hex) {
+    if (hex == null || hex.isEmpty) return AppColors.primary;
+    try {
+      final clean = hex.replaceAll('#', '');
+      return Color(int.parse('0xFF$clean'));
+    } catch (_) {
+      return AppColors.primary;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.neutral300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Kategoriyani tanlang',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: onAddNewCategory,
+                  icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                  label: const Text(
+                    'Yangi qo\'shish',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Default Category: "Boshqa" (Others)
+            ListTile(
+              onTap: () => Navigator.of(context).pop(-1), // -1 means null / Boshqa
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              tileColor: selectedCategoryId == null
+                  ? AppColors.primary.withValues(alpha: 0.08)
+                  : AppColors.neutral50,
+              leading: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF64748B).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.category_rounded,
+                    color: Color(0xFF64748B), size: 20),
+              ),
+              title: const Text(
+                'Boshqa (standart)',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+              ),
+              subtitle: const Text(
+                'Kategoriya tanlanmasa avtomatik biriktiriladi',
+                style: TextStyle(fontSize: 12, color: AppColors.neutral500),
+              ),
+              trailing: selectedCategoryId == null
+                  ? const Icon(Icons.check_circle_rounded,
+                      color: AppColors.primary, size: 22)
+                  : null,
+            ),
+
+            const SizedBox(height: 10),
+
+            // Categories list
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.45,
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: categories.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final cat = categories[index];
+                  final isSelected = cat.id == selectedCategoryId;
+                  final color = _parseHex(cat.color);
+
+                  return ListTile(
+                    onTap: () => Navigator.of(context).pop(cat.id),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    tileColor: isSelected
+                        ? AppColors.primary.withValues(alpha: 0.08)
+                        : AppColors.neutral50,
+                    leading: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.label_rounded, color: color, size: 20),
+                    ),
+                    title: Text(
+                      cat.name,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: isSelected ? AppColors.primary : AppColors.neutral900,
+                      ),
+                    ),
+                    trailing: isSelected
+                        ? const Icon(Icons.check_circle_rounded,
+                            color: AppColors.primary, size: 22)
+                        : null,
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
