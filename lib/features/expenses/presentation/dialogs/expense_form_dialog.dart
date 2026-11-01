@@ -9,6 +9,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/number_formatter.dart';
 import '../../data/models/expense_models.dart';
+import '../../data/repositories/expense_repository.dart';
 import '../bloc/expense_bloc.dart';
 import '../bloc/expense_category_bloc.dart';
 import 'expense_category_form_dialog.dart';
@@ -112,9 +113,11 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
             );
             if (newCategory != null && mounted) {
               // Reload categories in parent bloc
-              context
-                  .read<ExpenseCategoryBloc>()
-                  .add(const LoadExpenseCategories());
+              try {
+                context
+                    .read<ExpenseCategoryBloc>()
+                    .add(const LoadExpenseCategories());
+              } catch (_) {}
               // Auto-select newly created category and close picker
               Navigator.of(sheetContext).pop(newCategory.id);
             }
@@ -130,13 +133,37 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
     }
   }
 
-  void _submit() {
+  void _showError(String message) {
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline_rounded,
+                  color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+        ),
+      );
+  }
+
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     final rawAmountStr = amountDigits(_amountController.text);
     final amount = double.tryParse(rawAmountStr) ?? 0.0;
 
-    setState(() => _isSubmitting = true);
+    setState(() {
+      _isSubmitting = true;
+      _toastMessage = null;
+    });
 
     final request = ExpenseRequest(
       title: _titleController.text.trim(),
@@ -145,70 +172,87 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
       categoryId: _selectedCategoryId, // null = defaults to "Boshqa" (Others)
     );
 
+    final repository = getIt<ExpenseRepository>();
+
     if (widget.expense == null) {
-      context.read<ExpenseBloc>().add(CreateExpenseEvent(request));
-    } else {
-      context.read<ExpenseBloc>().add(
-            UpdateExpenseEvent(widget.expense!.id, request),
-          );
-    }
-  }
+      // CREATE NEW EXPENSE
+      final (expense, failure) = await repository.createExpense(request);
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
 
-  void _onSuccess(String message) {
-    setState(() => _isSubmitting = false);
+      if (failure != null) {
+        _showError(failure.message);
+      } else {
+        // Notify parent bloc if available
+        try {
+          context.read<ExpenseBloc>().add(const LoadExpensesEvent());
+        } catch (_) {}
 
-    if (widget.expense != null) {
-      // If editing existing expense, dismiss dialog
-      Navigator.of(context).pop();
-      return;
-    }
+        // Reset and clear all fields explicitly
+        _titleController.clear();
+        _amountController.clear();
+        _formKey.currentState?.reset();
 
-    // Adding new expense: keep dialog open, clear inputs, show success banner
-    _titleController.clear();
-    _amountController.clear();
-    _formKey.currentState?.reset();
+        setState(() {
+          _selectedDate = DateTime.now();
+          _selectedCategoryId = null;
+          _toastMessage = 'Xarajat muvaffaqiyatli saqlandi!';
+        });
 
-    setState(() {
-      _selectedDate = DateTime.now();
-      _selectedCategoryId = null;
-      _toastMessage = message;
-    });
+        _toastTimer?.cancel();
+        _toastTimer = Timer(const Duration(seconds: 4), () {
+          if (mounted) {
+            setState(() => _toastMessage = null);
+          }
+        });
 
-    _toastTimer?.cancel();
-    _toastTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted) {
-        setState(() => _toastMessage = null);
-      }
-    });
+        // Re-focus title for immediate next entry
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _titleFocusNode.requestFocus();
+        });
 
-    // Re-focus title for rapid continuous data entry
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _titleFocusNode.requestFocus();
-    });
-
-    // Native toast feedback
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  message,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
+        // Floating snackbar feedback
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(Icons.check_circle_rounded,
+                      color: Colors.white, size: 20),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Xarajat muvaffaqiyatli saqlandi!',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
-      );
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+            ),
+          );
+      }
+    } else {
+      // UPDATE EXISTING EXPENSE
+      final (expense, failure) =
+          await repository.updateExpense(widget.expense!.id, request);
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+
+      if (failure != null) {
+        _showError(failure.message);
+      } else {
+        try {
+          context.read<ExpenseBloc>().add(const LoadExpensesEvent());
+        } catch (_) {}
+        Navigator.of(context).pop();
+      }
+    }
   }
 
   @override
@@ -217,570 +261,554 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isCompact = screenWidth < 400;
 
-    return BlocListener<ExpenseBloc, ExpenseState>(
-      listener: (context, state) {
-        if (state is ExpenseActionSuccess) {
-          _onSuccess(state.message);
-        } else if (state is ExpenseError) {
-          setState(() => _isSubmitting = false);
-          ScaffoldMessenger.of(context)
-            ..clearSnackBars()
-            ..showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    const Icon(Icons.error_outline_rounded,
-                        color: Colors.white, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(state.message)),
-                  ],
-                ),
-                backgroundColor: AppColors.error,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
-            );
-        }
-      },
-      child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        insetPadding: EdgeInsets.symmetric(
-          horizontal: isCompact ? 12 : 20,
-          vertical: 24,
-        ),
-        backgroundColor: AppColors.surfaceLight,
-        elevation: 10,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 540),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              isCompact ? 18 : 26,
-              22,
-              isCompact ? 18 : 26,
-              26,
-            ),
-            child: SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Top Bar: Icon, Title and Close Button
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    const Color(0xFFF59E0B),
-                                    const Color(0xFFF59E0B).withValues(alpha: 0.8),
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(0xFFF59E0B).withValues(alpha: 0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(
-                                Icons.payments_rounded,
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  isEditing ? 'Xarajatni tahrirlash' : 'Yangi xarajat',
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: -0.4,
-                                    color: AppColors.neutral900,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  isEditing
-                                      ? 'Ma\'lumotlarni o\'zgartiring'
-                                      : 'Xarajat tafsilotlarini kiriting',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: AppColors.neutral500,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(20),
-                            onTap: () => Navigator.of(context).pop(),
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: AppColors.neutral100,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.close_rounded,
-                                size: 18,
-                                color: AppColors.neutral600,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    // Success Feedback Card (Inside Dialog)
-                    if (_toastMessage != null) ...[
-                      const SizedBox(height: 16),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFECFDF5),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.4),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF10B981),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.check_rounded,
-                                color: Colors.white,
-                                size: 14,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _toastMessage!,
-                                style: const TextStyle(
-                                  color: Color(0xFF065F46),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-
-                    const SizedBox(height: 22),
-
-                    // 1. Title Input
-                    const Text(
-                      'Xarajat nomi',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.neutral700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _titleController,
-                      focusNode: _titleFocusNode,
-                      autofocus: !isEditing,
-                      textInputAction: TextInputAction.next,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                      decoration: InputDecoration(
-                        hintText: 'Masalan: Ofis ijarasi, Suv, Kanselyariya...',
-                        hintStyle: const TextStyle(
-                          color: AppColors.neutral400,
-                          fontSize: 14,
-                          fontWeight: FontWeight.normal,
-                        ),
-                        prefixIcon: const Icon(Icons.edit_note_rounded,
-                            color: AppColors.primary, size: 22),
-                        filled: true,
-                        fillColor: AppColors.neutral50,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: AppColors.neutral200),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: AppColors.neutral200),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
-                        ),
-                      ),
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) {
-                          return 'Xarajat nomini kiriting';
-                        }
-                        return null;
-                      },
-                      onFieldSubmitted: (_) => _amountFocusNode.requestFocus(),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // 2. Amount Input
-                    const Text(
-                      'Summasi',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.neutral700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _amountController,
-                      focusNode: _amountFocusNode,
-                      keyboardType: TextInputType.number,
-                      textInputAction: TextInputAction.done,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.neutral900,
-                        letterSpacing: 0.5,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        ThousandsSeparatorInputFormatter(),
-                      ],
-                      decoration: InputDecoration(
-                        hintText: '300 000',
-                        hintStyle: const TextStyle(
-                          color: AppColors.neutral400,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        prefixIcon: const Icon(Icons.attach_money_rounded,
-                            color: AppColors.primary, size: 22),
-                        suffixText: "so'm",
-                        suffixStyle: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.neutral700,
-                        ),
-                        filled: true,
-                        fillColor: AppColors.neutral50,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: AppColors.neutral200),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: AppColors.neutral200),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
-                        ),
-                      ),
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) {
-                          return 'Summani kiriting';
-                        }
-                        final digits = amountDigits(val);
-                        final parsed = double.tryParse(digits);
-                        if (parsed == null || parsed <= 0) {
-                          return 'Summa 0 dan katta bo\'lishi kerak';
-                        }
-                        return null;
-                      },
-                      onFieldSubmitted: (_) => _submit(),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // 3. Category Selector (Modern BottomSheet Trigger)
-                    const Text(
-                      'Kategoriya',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.neutral700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    BlocBuilder<ExpenseCategoryBloc, ExpenseCategoryState>(
-                      builder: (context, state) {
-                        List<ExpenseCategoryModel> categories = [];
-                        if (state is ExpenseCategoryLoaded) {
-                          categories = state.categories;
-                        }
-
-                        // Determine selected category model
-                        ExpenseCategoryModel? selectedCategory;
-                        if (_selectedCategoryId != null) {
-                          for (final cat in categories) {
-                            if (cat.id == _selectedCategoryId) {
-                              selectedCategory = cat;
-                              break;
-                            }
-                          }
-                        }
-
-                        final selectedColor = selectedCategory != null
-                            ? _parseHex(selectedCategory.color)
-                            : const Color(0xFF64748B);
-
-                        final categoryTitle = selectedCategory != null
-                            ? selectedCategory.name
-                            : 'Boshqa (standart)';
-
-                        return InkWell(
-                          onTap: () => _openCategoryPicker(categories),
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 12 : 20,
+        vertical: 24,
+      ),
+      backgroundColor: AppColors.surfaceLight,
+      elevation: 10,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 540),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            isCompact ? 18 : 26,
+            22,
+            isCompact ? 18 : 26,
+            26,
+          ),
+          child: SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Top Bar: Icon, Title and Close Button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
                             decoration: BoxDecoration(
-                              color: AppColors.neutral50,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AppColors.neutral200),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 28,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: selectedColor.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(
-                                    selectedCategory != null
-                                        ? Icons.label_rounded
-                                        : Icons.category_rounded,
-                                    size: 16,
-                                    color: selectedColor,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    categoryTitle,
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                      color: selectedCategory != null
-                                          ? AppColors.neutral900
-                                          : AppColors.neutral600,
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        'Tanlash',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.primary,
-                                        ),
-                                      ),
-                                      SizedBox(width: 4),
-                                      Icon(
-                                        Icons.keyboard_arrow_down_rounded,
-                                        size: 16,
-                                        color: AppColors.primary,
-                                      ),
-                                    ],
-                                  ),
+                              gradient: LinearGradient(
+                                colors: [
+                                  const Color(0xFFF59E0B),
+                                  const Color(0xFFF59E0B).withValues(alpha: 0.8),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFF59E0B)
+                                      .withValues(alpha: 0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
                                 ),
                               ],
                             ),
-                          ),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // 4. Date Picker
-                    const Text(
-                      'Xarajat sanasi',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.neutral700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    InkWell(
-                      onTap: _pickDate,
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
-                        decoration: BoxDecoration(
-                          color: AppColors.neutral50,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppColors.neutral200),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.calendar_month_rounded,
-                                size: 16,
-                                color: AppColors.primary,
-                              ),
+                            child: const Icon(
+                              Icons.payments_rounded,
+                              color: Colors.white,
+                              size: 24,
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _displayDateFormat.format(_selectedDate),
+                          ),
+                          const SizedBox(width: 14),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                isEditing ? 'Xarajatni tahrirlash' : 'Yangi xarajat',
                                 style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.4,
                                   color: AppColors.neutral900,
                                 ),
                               ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.neutral200.withValues(alpha: 0.6),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Text(
-                                'O\'zgartirish',
-                                style: TextStyle(
+                              const SizedBox(height: 2),
+                              Text(
+                                isEditing
+                                    ? 'Ma\'lumotlarni o\'zgartiring'
+                                    : 'Xarajat tafsilotlarini kiriting',
+                                style: const TextStyle(
                                   fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.neutral700,
+                                  color: AppColors.neutral500,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () => Navigator.of(context).pop(),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppColors.neutral100,
+                              shape: BoxShape.circle,
                             ),
-                          ],
+                            child: const Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: AppColors.neutral600,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
+                  ),
 
-                    const SizedBox(height: 28),
-
-                    // Action buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 1,
-                          child: OutlinedButton(
-                            onPressed: _isSubmitting
-                                ? null
-                                : () => Navigator.of(context).pop(),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              side: const BorderSide(color: AppColors.neutral300),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16)),
+                  // Success Feedback Banner (Inside Dialog)
+                  if (_toastMessage != null) ...[
+                    const SizedBox(height: 16),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color:
+                              const Color(0xFF10B981).withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF10B981),
+                              shape: BoxShape.circle,
                             ),
-                            child: const Text(
-                              'Yopish',
-                              style: TextStyle(
-                                color: AppColors.neutral700,
+                            child: const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _toastMessage!,
+                              style: const TextStyle(
+                                color: Color(0xFF065F46),
                                 fontWeight: FontWeight.w700,
-                                fontSize: 15,
+                                fontSize: 13,
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 2,
-                          child: FilledButton(
-                            onPressed: _isSubmitting ? null : _submit,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              elevation: 2,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16)),
-                            ),
-                            child: _isSubmitting
-                                ? const SizedBox(
-                                    height: 22,
-                                    width: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                          Colors.white),
-                                    ),
-                                  )
-                                : Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        isEditing
-                                            ? Icons.check_rounded
-                                            : Icons.add_rounded,
-                                        color: Colors.white,
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        isEditing ? 'Saqlash' : 'Qo\'shish',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
-                ),
+
+                  const SizedBox(height: 22),
+
+                  // 1. Title Input
+                  const Text(
+                    'Xarajat nomi',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.neutral700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _titleController,
+                    focusNode: _titleFocusNode,
+                    autofocus: !isEditing,
+                    textInputAction: TextInputAction.next,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600),
+                    decoration: InputDecoration(
+                      hintText: 'Masalan: Ofis ijarasi, Suv, Kanselyariya...',
+                      hintStyle: const TextStyle(
+                        color: AppColors.neutral400,
+                        fontSize: 14,
+                        fontWeight: FontWeight.normal,
+                      ),
+                      prefixIcon: const Icon(Icons.edit_note_rounded,
+                          color: AppColors.primary, size: 22),
+                      filled: true,
+                      fillColor: AppColors.neutral50,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: AppColors.neutral200),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: AppColors.neutral200),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(
+                            color: AppColors.primary, width: 2),
+                      ),
+                    ),
+                    validator: (val) {
+                      if (val == null || val.trim().isEmpty) {
+                        return 'Xarajat nomini kiriting';
+                      }
+                      return null;
+                    },
+                    onFieldSubmitted: (_) => _amountFocusNode.requestFocus(),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // 2. Amount Input
+                  const Text(
+                    'Summasi',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.neutral700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _amountController,
+                    focusNode: _amountFocusNode,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.done,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.neutral900,
+                      letterSpacing: 0.5,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      ThousandsSeparatorInputFormatter(),
+                    ],
+                    decoration: InputDecoration(
+                      hintText: '300 000',
+                      hintStyle: const TextStyle(
+                        color: AppColors.neutral400,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      prefixIcon: const Icon(Icons.attach_money_rounded,
+                          color: AppColors.primary, size: 22),
+                      suffixText: "so'm",
+                      suffixStyle: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral700,
+                      ),
+                      filled: true,
+                      fillColor: AppColors.neutral50,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: AppColors.neutral200),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: AppColors.neutral200),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(
+                            color: AppColors.primary, width: 2),
+                      ),
+                    ),
+                    validator: (val) {
+                      if (val == null || val.trim().isEmpty) {
+                        return 'Summani kiriting';
+                      }
+                      final digits = amountDigits(val);
+                      final parsed = double.tryParse(digits);
+                      if (parsed == null || parsed <= 0) {
+                        return 'Summa 0 dan katta bo\'lishi kerak';
+                      }
+                      return null;
+                    },
+                    onFieldSubmitted: (_) => _submit(),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // 3. Category Selector
+                  const Text(
+                    'Kategoriya',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.neutral700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  BlocBuilder<ExpenseCategoryBloc, ExpenseCategoryState>(
+                    builder: (context, state) {
+                      List<ExpenseCategoryModel> categories = [];
+                      if (state is ExpenseCategoryLoaded) {
+                        categories = state.categories;
+                      }
+
+                      ExpenseCategoryModel? selectedCategory;
+                      if (_selectedCategoryId != null) {
+                        for (final cat in categories) {
+                          if (cat.id == _selectedCategoryId) {
+                            selectedCategory = cat;
+                            break;
+                          }
+                        }
+                      }
+
+                      final selectedColor = selectedCategory != null
+                          ? _parseHex(selectedCategory.color)
+                          : const Color(0xFF64748B);
+
+                      final categoryTitle = selectedCategory != null
+                          ? selectedCategory.name
+                          : 'Boshqa (standart)';
+
+                      return InkWell(
+                        onTap: () => _openCategoryPicker(categories),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: AppColors.neutral50,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.neutral200),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: selectedColor.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  selectedCategory != null
+                                      ? Icons.label_rounded
+                                      : Icons.category_rounded,
+                                  size: 16,
+                                  color: selectedColor,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  categoryTitle,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: selectedCategory != null
+                                        ? AppColors.neutral900
+                                        : AppColors.neutral600,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color:
+                                      AppColors.primary.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'Tanlash',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                    SizedBox(width: 4),
+                                    Icon(
+                                      Icons.keyboard_arrow_down_rounded,
+                                      size: 16,
+                                      color: AppColors.primary,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // 4. Date Picker
+                  const Text(
+                    'Xarajat sanasi',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.neutral700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: _pickDate,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: AppColors.neutral50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.neutral200),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.calendar_month_rounded,
+                              size: 16,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _displayDateFormat.format(_selectedDate),
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.neutral900,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color:
+                                  AppColors.neutral200.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'O\'zgartirish',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.neutral700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  // Action buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 1,
+                        child: OutlinedButton(
+                          onPressed: _isSubmitting
+                              ? null
+                              : () => Navigator.of(context).pop(),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: const BorderSide(color: AppColors.neutral300),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
+                          ),
+                          child: const Text(
+                            'Yopish',
+                            style: TextStyle(
+                              color: AppColors.neutral700,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: FilledButton(
+                          onPressed: _isSubmitting ? null : _submit,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            elevation: 2,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
+                          ),
+                          child: _isSubmitting
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
+                                  ),
+                                )
+                              : Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      isEditing
+                                          ? Icons.check_rounded
+                                          : Icons.add_rounded,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      isEditing ? 'Saqlash' : 'Qo\'shish',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
