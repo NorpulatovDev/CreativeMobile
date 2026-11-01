@@ -79,7 +79,7 @@ ExpenseRequest _$ExpenseRequestFromJson(Map<String, dynamic> json) =>
       title: json['title'] as String,
       amount: (json['amount'] as num).toDouble(),
       expenseDate: json['expenseDate'] as String,
-      categoryId: (json['categoryId'] as num).toInt(),
+      categoryId: (json['categoryId'] as num?)?.toInt(),
     );
 
 Map<String, dynamic> _$ExpenseRequestToJson(ExpenseRequest instance) =>

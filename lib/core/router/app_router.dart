@@ -30,6 +30,9 @@ import '../../features/permissions/presentation/pages/permissions_page.dart';
 import '../../features/sms_templates/presentation/pages/sms_templates_page.dart';
 import '../../features/expenses/presentation/pages/expenses_page.dart';
 import '../../features/expenses/presentation/pages/expense_categories_page.dart';
+import '../../features/expenses/presentation/bloc/expense_bloc.dart';
+import '../../features/expenses/presentation/bloc/expense_category_bloc.dart';
+import '../../features/expenses/presentation/dialogs/expense_form_dialog.dart';
 import '../../features/reports/presentation/pages/payment_status_page.dart';
 import '../../features/reports/presentation/pages/reports_page.dart';
 import '../../features/students/presentation/bloc/student_bloc.dart';
@@ -1332,6 +1335,22 @@ class _PageGrid extends StatelessWidget {
     Future.delayed(const Duration(seconds: 15), () => sub?.cancel());
   }
 
+  static Future<void> _showQuickExpense(BuildContext context) async {
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => MultiBlocProvider(
+        providers: [
+          BlocProvider(create: (_) => getIt<ExpenseBloc>()),
+          BlocProvider(
+            create: (_) =>
+                getIt<ExpenseCategoryBloc>()..add(const LoadExpenseCategories()),
+          ),
+        ],
+        child: const ExpenseFormDialog(),
+      ),
+    );
+  }
+
   List<_PageData> _buildItems(BuildContext context) {
     final authState = context.read<AuthBloc>().state;
     final isSuperAdmin =
@@ -1347,8 +1366,10 @@ class _PageGrid extends StatelessWidget {
       _PageData(icon: Icons.sms_rounded,            label: "SMS tarixi",        color: const Color(0xFF6366F1), route: Routes.smsHistory),
       _PageData(icon: Icons.person_rounded,         label: "O'qituvchilar",     color: AppColors.warning,       route: Routes.teachers),
       _PageData(icon: Icons.add_card_rounded,       label: "To'lov qo'shish",   color: const Color(0xFF8B5CF6), onTap: _showQuickPayment),
-      if (isSuperAdmin)
+      if (isSuperAdmin) ...[
         _PageData(icon: Icons.payments_rounded,     label: "Xarajatlar",        color: const Color(0xFFF59E0B), route: Routes.expenses),
+        _PageData(icon: Icons.post_add_rounded,     label: "Xarajat qo'shish",  color: const Color(0xFFF59E0B), onTap: _showQuickExpense),
+      ],
     ];
   }
 

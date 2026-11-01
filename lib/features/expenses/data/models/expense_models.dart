@@ -79,13 +79,13 @@ class ExpenseRequest {
   final String title;
   final double amount;
   final String expenseDate; // YYYY-MM-DD
-  final int categoryId;
+  final int? categoryId;
 
   const ExpenseRequest({
     required this.title,
     required this.amount,
     required this.expenseDate,
-    required this.categoryId,
+    this.categoryId,
   });
 
   factory ExpenseRequest.fromJson(Map<String, dynamic> json) =>
